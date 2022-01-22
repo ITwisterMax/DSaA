@@ -1,0 +1,424 @@
+unit Computer;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls, Vcl.StdCtrls,
+  Vcl.Samples.Spin, Vcl.MPlayer;
+
+type
+  TMainForm = class(TForm)
+    Generate_: TButton;
+    Find_: TButton;
+    Load_: TButton;
+    Save_: TButton;
+    Draw_: TButton;
+    MazeX: TSpinEdit;
+    MazeY: TSpinEdit;
+    TextX: TLabel;
+    TextY: TLabel;
+    ScrollBox1: TScrollBox;
+    BackBuffer: TImage;
+    Exit_: TButton;
+    HelpVoice2: TMediaPlayer;
+    procedure Generate_Click(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+    procedure Find_Click(Sender: TObject);
+    procedure Save_Click(Sender: TObject);
+    procedure Load_Click(Sender: TObject);
+    procedure Draw_Click(Sender: TObject);
+    procedure Exit_Click(Sender: TObject);
+
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+type
+  Location = record
+    left_wall, up_wall : Boolean;
+  end;
+
+  Maze = array of array of Location;
+
+var
+  MainForm : TMainForm;
+  Laberint : Maze;
+  CellSize : Byte = 24;
+
+implementation
+
+{$R *.dfm}
+
+procedure LoadMaze(var TheMaze : Maze; Name : string);  //загрузить лабиринт
+var
+  f : TextFile; //файл с описанием лабиринта
+  Height, Width : Integer;//высота и ширина лабиринта
+  x,y : Integer;//текущая локация
+  lw,uw : Integer; //временные переменные
+
+begin
+  AssignFile(f, 'Сlassified.txt'); //открыть файл
+  Reset(f);
+  ReadLn(f, Width, Height);//прочитать высоту и ширину
+  SetLength(TheMaze, Width + 1, Height + 1);//изменить размер лабиринта
+  for y := 0 to Height do //цикл по всем локациям
+    for x := 0 to Width do
+      if (y = Height) or (x = Width) then //если локация-служебная
+        begin
+          TheMaze[x, y].left_wall := true;   //обе стены существуют
+          TheMaze[x, y].up_wall := true;
+	      end
+      else
+        begin //иначе считываем
+          ReadLn(f, uw, lw); // из файла
+          TheMaze[x, y].left_wall := Boolean(lw);//прочитанное целое
+          TheMaze[x, y].up_wall := Boolean(uw);//число надо привести
+        end; //к типу Boolean
+  CloseFile(f);
+end; //закрыть файл
+
+procedure SaveMaze(TheMaze : Maze; Name : string);   //сохранить лабиринт
+var
+  f:TextFile; // файл с описанием лабиринта
+  Height, Width	: Integer;//высота и ширина
+  x, y	: Integer;//координаты текущей локации
+
+begin
+	AssignFile(f, 'Сlassified.txt');//открыть файл
+  Rewrite(f);//для записи
+	Height := High(TheMaze[0]);//определяем высоту
+	Width := High(TheMaze);//и ширину лабиринта
+	WriteLn(f, Width, ' ', Height);//запись в файл высоты и ширины
+  for	y := 0 to Height - 1 do // запись данных локаций }
+    for	x := 0 to Width - 1 do
+	    WriteLn(f, Integer(TheMaze[x, y].up_wall), ' ',
+	Integer(TheMaze[x, y].left_wall));
+  CloseFile(f);  //закрыть файл
+end;
+
+function WaveTracingSolve(TheMaze : Maze; xs, ys, xf, yf : Integer) : Boolean;
+
+var
+  Mark : array of array of Integer; { метки локаций }
+  x, y, xc, yc : Integer;
+  N, i : Integer;
+  Height, Width : Integer;
+
+const
+  dx : array[1..4] of Integer = (1, 0, -1, 0); { смещения }
+  dy : array[1..4] of Integer = (0, -1, 0, 1);
+    { neo?aaiay ooieoey: ii?aaaeyao, ii?ii ee i?ieoe ec eieaoee
+    (x, y) в локацию (x + dx, y + dy), то есть нет ли между ними стены }
+
+function CanGo(x, y, dx, dy : Integer) : Boolean;
+begin
+  if dx = -1 then CanGo := not TheMaze[x, y].left_wall
+  else
+    if dx = 1 then CanGo := not TheMaze[x + 1, y].left_wall
+    else
+      if dy = -1 then CanGo := not TheMaze[x, y].up_wall
+      else CanGo := not TheMaze[x, y + 1].up_wall;
+end;
+
+function Solve : Boolean; { поиск решения }
+var
+  i, N, x, y : Integer;
+  NoSolution : Boolean;
+
+begin
+  N := 1; { начинаем с итерации номер 1 }
+
+  repeat
+    NoSolution := true; { пессимистично полагаем, что решения нет }
+    for x := 0 to Width - 1 do
+      for y := 0 to Height - 1 do
+        if Mark[x, y] = N then { найти локации, помеченные числом N }
+    for i := 1 to 4 do { просмотр соседних локаций }
+      if CanGo(x, y, dx[i], dy[i]) and (Mark[x + dx[i], y + dy[i]] = 0) then
+        begin { локация доступна и помечена нулем }
+          NoSolution := false; { есть шанс найти
+          решение }
+          { помечаем соседнюю локацию числом N +
+          1 }
+          Mark[x + dx[i], y + dy[i]] := N + 1;
+          if (x + dx[i] = xf) and (y + dy[i] = yf) then
+            begin
+              Solve := true; { дошли до финишной
+              локации }
+              Exit; { конец алгоритма }
+            end;
+        end;
+    N := N + 1; { переход к следующей итерации }
+  until NoSolution; { повторять, если есть надежда найти решение }
+  Solve := false; { нет, решение не найдено }
+end;
+
+begin
+  result:=false;
+  Width := High(TheMaze);
+  Height := High(TheMaze[0]);
+  SetLength(Mark, Width, Height); { выделение памяти для пометок }
+
+  for x := 0 to Width - 1 do { изначально все заполняется нулями }
+    for y := 0 to Height - 1 do
+      Mark[x, y] := 0;
+
+  Mark[xs, ys] := 1; { стартовой локации соответствует единица }
+  if Solve then { если найдено решение, рисуем его }
+    begin
+      result := true;
+      x := xf;
+      y := yf;
+      MainForm.BackBuffer.Canvas.brush.Color:=clblue;
+      for N := Mark[xf, yf] downto 1 do
+        begin
+
+          { рисуем окружность на очередной локации маршрута }
+          xc := CellSize * (2 * x + 1) div 2;
+          yc := CellSize * (2 * y + 1) div 2;
+          MainForm.BackBuffer.Canvas.Ellipse(xc - 5, yc - 5, xc + 5, yc + 5);
+
+          for i := 1 to 4 do
+            if CanGo(x, y, dx[i], dy[i]) and (Mark[x + dx[i], y + dy[i]] = N - 1) then
+              begin
+                x := x + dx[i]; { ищем следующую локацию
+                маршрута }
+                y := y + dy[i];
+
+                Break;
+              end;
+        end;
+      MainForm.BackBuffer.Canvas.brush.Color := clwhite;
+    end;
+end;
+
+procedure ShowMaze(TheMaze : Maze); { нарисовать лабиринт }
+
+var
+  x, y : Integer;
+  Height, Width : Integer; { высота и ширина лабиринта }
+
+begin
+  Width := High(TheMaze); { определить высоту и ширину }
+  Height := High(TheMaze[0]);
+
+  MainForm.MazeX.text := IntToStr(Width);
+  MainForm.MazeY.text := IntToStr(Height);
+
+  MainForm.BackBuffer.Width := (StrToInt(MainForm.MazeX.text) + 1) * CellSize;
+  MainForm.BackBuffer.Height := (StrToInt(MainForm.MazeY.text) + 1) * CellSize;
+
+  MainForm.BackBuffer.Picture.Bitmap.Width := MainForm.BackBuffer.Width;
+  MainForm.BackBuffer.Picture.Bitmap.Height := MainForm.BackBuffer.Height;
+
+  with MainForm.BackBuffer.Canvas do
+    begin { очистка буфера }
+      FillRect(Rect(0, 0, MainForm.BackBuffer.Width, MainForm.BackBuffer.Height));
+      for x := 0 to Width - 1 do
+        for y := 0 to Height - 1 do
+          begin
+            { если в локации есть верхняя стена }
+            if TheMaze[x, y].up_wall then
+              begin
+                MoveTo(x * CellSize, y * CellSize); { рисуем ее }
+                LineTo((x + 1) * CellSize, y * CellSize);
+              end;
+            { если в локации есть левая стена }
+            if (x <> 0) or ((x = 0) and (y <> 0))  then
+              if TheMaze[x, y].left_wall then
+                begin
+                  MoveTo(x * CellSize, y * CellSize); { рисуем и ее }
+                  LineTo(x * CellSize, (y + 1) * CellSize);
+                end;
+          end;
+      MoveTo(0, Height * CellSize); { рисуем стену снизу и }
+
+      LineTo(Width * CellSize, (Height) * CellSize); { справа от лабиринта }
+      MoveTo(Width * CellSize,  (Height - 1) * CellSize);
+      LineTo(Width * CellSize, 0);
+    end;
+end;
+
+function PrimGenerateMaze(Width, Height : Integer) : Maze;
+
+type
+  AttrType = (Inside, Outside, Border);   {тип "атрибут локации"}
+
+var
+  TheMaze : Maze;                        {сам лабиринт}
+  x, y, i : Integer;
+  xc, yc : Integer;
+  xloc, yloc : Integer;
+  Attribute : array of array of AttrType; {карта атрибутов}
+  IsEnd : Boolean;
+  counter : Integer;
+
+const
+  dx : array[1..4] of Integer = (1, 0, -1, 0);  {смещения}
+  dy : array[1..4] of Integer = (0, -1, 0, 1);
+
+label
+  ExitFor1,
+  ExitFor2,
+  ExitFor3; {используемые метки}
+
+
+procedure BreakWall(x, y, dx, dy : Integer); {разрушить стену}
+  begin                                    {между локациями}
+      if dx = -1 then TheMaze[x, y].left_wall := false
+      else
+        if dx = 1 then TheMaze[x + 1, y].left_wall := false
+        else
+          if dy = -1 then TheMaze[x, y].up_wall := false
+          else TheMaze[x, y + 1].up_wall := false;
+  end;
+
+begin
+  SetLength(Attribute, Width, Height);  {выделение памяти для атрибутов}
+  SetLength(TheMaze, Width + 1, Height + 1); {измерить размер лабиринта}
+
+  for x := 0 to Width - 1 do  {изначально все атрибуты}
+    for y := 0 to Height - 1 do  {равны Outside}
+      Attribute[x, y] := Outside;
+
+  for y := 0 to Height do   {все стены изначально}
+    for x := 0 to Width do  {существуют}
+      begin
+        TheMaze[x, y].left_wall := true;
+        TheMaze[x, y].up_wall := true;
+      end;
+
+  Randomize;
+  x := Random(Width); {выбираем начальную локацию}
+  y := Random(Height);
+  Attribute[x, y] := Inside; {и присваиваем ей атрибут Inside}
+
+  for i := 1 to 4 do  {всем ее соседям присваиваем}
+    begin             {атрибут Border}
+      xc := x + dx[i];
+      yc := y + dy[i];
+      if (xc >= 0) and (yc >= 0) and (xc < Width) and (yc < Height) then
+        Attribute[xc, yc] := Border;
+    end;
+
+  repeat       {главный цикл}
+    IsEnd := true;
+    counter := 0;
+    for x := 0 to Width - 1 do   {подсчитываем количество}
+      for y := 0 to Height - 1 do   {локаций с атрибутом Border}
+        if Attribute[x, y] = Border then counter := counter+1;
+
+    counter := Random(counter) + 1;  {выбираем из них}
+    for x := 0 to Width - 1 do       {одну случайную}
+      for y := 0 to Height - 1 do
+        if Attribute[x, y] = Border then
+          begin
+            counter:=counter - 1;
+            if counter = 0 then
+              begin
+                xloc := x;   {xloc,yloc-ее координаты}
+                yloc := y;
+                goto ExitFor1;   {выход из цикла}
+              end;
+          end;
+
+    ExitFor1:
+
+    Attribute[xloc,yloc] := Inside;  {присвоить ей атрибут Inside}
+    counter := 0;
+    for i := 1 to 4 do
+      begin
+        xc := xloc + dx[i];
+        yc := yloc + dy[i];
+        if (xc >= 0) and (yc >= 0) and (xc < Width) and (yc < Height) then
+          begin  {подсчитать количество локаций с атрибутом Inside}
+            if Attribute[xc, yc] = Inside then counter := counter + 1;
+            if Attribute[xc, yc] = Outside then {заменить атрибуты с}
+              Attribute[xc, yc] := Border;        {Outside на Border}
+          end;
+      end;
+
+      counter := Random(counter) + 1;  {выбрать случайную Inside-локацию}
+      for i := 1 to 4 do
+        begin
+          xc := xloc + dx[i];
+          yc := yloc + dy[i];
+          if (xc >= 0) and (yc >= 0) and (xc < Width)
+          and (yc < Height) and (Attribute[xc, yc] = Inside)then
+            begin
+              counter := counter - 1;
+              if counter = 0 then   {разрушить стену между ней и}
+                begin               {текущей локацией}
+                  BreakWall(xloc, yloc, dx[i], dy[i]);
+                  goto ExitFor2;
+                end;
+            end;
+        end;
+
+    ExitFor2:
+
+    for x := 0 to Width - 1 do   {определить, есть ли}
+      for y := 0 to Height - 1 do {хоть одна локация с}
+        if Attribute[x, y] = Border then  {атрибутом Border}
+          begin
+            IsEnd := false;  {если да, то продолжаем}
+            goto ExitFor3;  {выполнять алгоритм}
+          end;
+
+    ExitFor3:
+
+    ShowMaze(TheMaze);      {отобразить процесс генерации}
+    Application.ProcessMessages;
+
+  until IsEnd;
+
+  PrimGenerateMaze := TheMaze;
+end;
+
+procedure TMainForm.FormShow(Sender: TObject);
+begin
+  ScrollBox1.SetFocus;
+  MazeX.Text := '26';
+  MazeY.Text := '22';
+  Laberint := PrimGenerateMaze(StrToInt(MazeX.text), StrToInt(MazeY.text));
+  ShowMaze(Laberint);
+  HelpVoice2.Open;
+  HelpVoice2.Play;
+end;
+
+procedure TMainForm.Generate_Click(Sender: TObject);
+begin
+  Laberint := PrimGenerateMaze(StrToInt(MazeX.text), StrToInt(MazeY.text));
+  ShowMaze(Laberint);
+end;
+
+procedure TMainForm.Find_Click(Sender: TObject);
+begin
+  WaveTracingSolve(Laberint, 0, 0, StrToInt(MazeX.text) - 1, StrToInt(MazeY.text) - 1);
+end;
+
+procedure TMainForm.Load_Click(Sender: TObject);
+begin
+  LoadMaze(Laberint, 'Сlassified.txt');
+end;
+
+procedure TMainForm.Save_Click(Sender: TObject);
+begin
+  SaveMaze(Laberint, 'Сlassified.txt');
+end;
+
+procedure TMainForm.Draw_Click(Sender: TObject);
+begin
+  ShowMaze(Laberint);
+end;
+
+procedure TMainForm.Exit_Click(Sender: TObject);
+begin
+  HelpVoice2.Close;
+  MainForm.Close;
+end;
+
+end.

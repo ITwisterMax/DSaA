@@ -1,0 +1,17 @@
+program Escape;
+
+uses
+  Vcl.Forms,
+  Computer in 'Computer.pas' {MainForm},
+  Vcl.Themes,
+  Vcl.Styles;
+
+{$R *.res}
+
+begin
+  Application.Initialize;
+  Application.MainFormOnTaskbar := True;
+  TStyleManager.TrySetStyle('Emerald Light Slate');
+  Application.CreateForm(TMainForm, MainForm);
+  Application.Run;
+end.

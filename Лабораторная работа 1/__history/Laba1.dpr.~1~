@@ -1,0 +1,39 @@
+program Laba1;
+
+{$APPTYPE CONSOLE}
+
+{$R *.res}
+
+uses
+  System.SysUtils;
+
+type
+  PointerMan = ^Element;
+  Element = record
+    Data : Integer;
+    AdrNext : PointerMan;
+  end;
+
+var
+  First : PointerMan;
+  N : Integer;
+
+procedure make (x : PointerMan; N : Integer);
+var
+  i : Integer;
+begin
+  New(x);
+  for i := 1 to N do
+    begin
+      New(x^.AdrNext);
+      x := x^.AdrNext;
+      x^.Data := i;
+      Write (x^.Data);
+    end;
+end;
+
+begin
+  Write('Введите количество человек N : ');
+  ReadLn(N);
+  make(First, N);
+end.

@@ -1,0 +1,254 @@
+unit Maze1;
+
+interface
+
+uses
+  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
+  Dialogs, ExtCtrls, StdCtrls,
+  Maze2;
+
+type
+  TMainForm = class(TForm)
+    RandomMaze: TImage;
+    Generate: TButton;
+    Search: TButton;
+    procedure FormCreate(Sender: TObject);
+    procedure Initialise;
+    procedure CelluleSuite;
+    procedure FormClose(Sender: TObject; var Action: TCloseAction);
+    procedure GenerateClick(Sender: TObject);
+    procedure SearchClick(Sender: TObject);
+  private
+    { Déclarations privées }
+  public
+    { Déclarations publiques }
+  end;
+
+var
+  MainForm: TMainForm;
+  tbcl : array[0..32,0..22] of byte;
+
+implementation
+
+{$R *.dfm}
+
+const
+  xm = 32;
+  ym = 22;
+var
+  pn,pv,pc : TBitmap;
+  tbpr : array of TPoint;
+  nbpr : integer;
+  ptec : TPoint;
+  porte : array[1..4] of byte;
+
+procedure Trace(num : integer);
+begin
+  Showmessage(IntToStr(num));
+end;
+
+procedure Trac2(n1,n2 : integer);
+begin
+  Showmessage(IntToStr(n1)+','+IntToStr(n2));
+end;
+
+procedure TMainForm.FormCreate(Sender: TObject);
+begin
+  Randomize;
+  pn := TBitmap.Create;
+  pn.LoadFromFile('Wall.bmp');
+  pv := TBitmap.Create;
+  pv.LoadFromFile('Back.bmp');
+  pc := TBitmap.Create;
+  pc.LoadFromFile('Point.bmp');
+  lesCases := TAStarList.Create;
+  leChemin := TAStarList.Create;
+  macase := TAStarcell.Create;
+end;
+
+procedure TMainForm.FormClose(Sender: TObject; var Action: TCloseAction);
+begin
+  pn.Free;
+  pv.Free;
+  pc.Free;
+  macase.Free;
+  leChemin.Free;
+  lesCases.Free;
+end;
+
+procedure TMainForm.Initialise;
+var  cl,lg,x,y : integer;
+begin
+  for cl := 0 to 32 do
+  begin
+    tbcl[cl,0] := 255;
+    tbcl[cl,22] := 255;
+  end;
+  for lg := 0 to 22 do
+  begin
+    tbcl[0,lg] := 255;
+    tbcl[32,lg] := 255;
+  end;
+  y := 0;
+  for lg := 0 to 22 do
+  begin
+    x := 0;
+    for cl := 0 to 32 do
+    begin
+     RandomMaze.Canvas.Draw(x,y,pn);
+     inc(x,25);
+    end;
+    inc(y,25);
+  end;
+  for lg := 1 to 21 do
+    for cl := 1 to 31 do
+    begin
+      tbcl[cl,lg] := 9;                             // porte
+      if Odd(lg) and Odd(cl) then tbcl[cl,lg] := 1; // cellule fermée
+    end;
+  for lg := 1 to 21 do
+    for cl := 1 to 31 do                   // tracé des cellules
+      if tbcl[cl,lg] = 1 then RandomMaze.Canvas.Draw(cl*25,lg*25,pv);
+end;
+
+procedure TMainForm.GenerateClick(Sender: TObject);
+var cl,lg : integer;
+begin
+  Initialise;
+// Choix des coordonnées de la première cellule
+  repeat
+    cl := Random(31)+1;
+  until Odd(cl);
+  repeat
+    lg := Random(21)+1;
+  until Odd(lg);
+// Init de la table des pointeurs (array dynamique)
+  nbpr := 1;
+  SetLength(tbpr,nbpr);
+  tbpr[0].X := cl;                     // chargement des coordonnées
+  tbpr[0].Y := lg;                     // de la première cellule
+  RandomMaze.Canvas.Draw(25*cl,25*lg,pv);    // tracé de la 1ère cellule
+  tbcl[cl,lg] := 0;                    // ouverture 1ère cellule
+  ptec := tbpr[0];                     // chargement du pointeur en cours
+  while nbpr > 0 do CelluleSuite;      // exécution jusqu'au retour du pointeur
+end;
+
+procedure TMainForm.CelluleSuite;         // élaboration du labyrinthe
+var  i,nb,np  : byte;
+     cl,lg : integer;
+begin
+  cl := ptec.X;
+  lg := ptec.Y;
+// rescencement des portes fermées
+  for i := 1 to 4 do                // Nord, Est, Sud, Ouest
+  begin
+    porte[i] := 0;
+    case i of
+      1 : if tbcl[cl,lg-1] = 9 then                   // porte fermée
+            if tbcl[cl,lg-2] = 1 then porte[i] := 1   // et cellule libre
+            else porte[i] := 0;
+      2 : if tbcl[cl+1,lg] = 9 then
+            if tbcl[cl+2,lg] = 1 then porte[i] := 1
+            else porte[i] := 0;
+      3 : if tbcl[cl,lg+1] = 9 then
+            if tbcl[cl,lg+2] = 1 then porte[i] := 1
+            else porte[i] := 0;
+      4 : if tbcl[cl-1,lg] = 9 then
+            if tbcl[cl-2,lg] = 1 then porte[i] := 1
+            else porte[i] := 0;
+    end;
+  end;
+// pour choisir au hasard une porte, on tire pour chaque porte fermée une
+// valeur entre 1 et 5.
+  for i := 1 to 4 do
+    if porte[i] > 0 then porte[i] := Random(5)+1;
+// on choisit la porte ayant la plus grande valeur
+  nb := 0;
+  np := 0;
+  for i := 1 to 4 do
+    if porte[i] > np then     // si la valeur de la porte est supérieur à
+    begin                     // la valeur stockée "np", on stocke la
+      nb := i;                // nouvelle valeur ainsi que le numéro de
+      np := porte[i];         // la porte "nb".
+    end;
+  if nb > 0 then    // si au moins une porte est disponible...
+  begin
+    case nb of      // en fonction de la direction, on modifie le pointeur
+      1 : begin     // Nord
+            dec(lg);
+            tbcl[cl,lg] := 0;            // on efface le mur dans le tableau...
+            RandomMaze.Canvas.Draw(cl*25,lg*25,pv);  // et à l'écran
+            dec(lg);
+            tbcl[cl,lg] := 0;            // on ouvre la cellule
+          end;
+      2 : begin     // Est
+            inc(cl);
+            tbcl[cl,lg] := 0;
+            RandomMaze.Canvas.Draw(cl*25,lg*25,pv);
+            inc(cl);
+            tbcl[cl,lg] := 0;
+          end;
+      3 : begin      // Sud
+            inc(lg);
+            tbcl[cl,lg] := 0;
+            RandomMaze.Canvas.Draw(cl*25,lg*25,pv);
+            inc(lg);
+            tbcl[cl,lg] := 0;
+          end;
+      4 : begin     // Ouest
+            dec(cl);
+            tbcl[cl,lg] := 0;
+            RandomMaze.Canvas.Draw(cl*25,lg*25,pv);
+            dec(cl);
+            tbcl[cl,lg] := 0;
+          end;
+    end;
+    inc(nbpr);                 // on enregistre la nouvelle cellule dans
+    SetLength(tbpr,nbpr);      // la table des pointeurs
+    tbpr[nbpr-1].X := cl;
+    tbpr[nbpr-1].Y := lg;
+    ptec := tbpr[nbpr-1];      // et on met à jour le pointeur en cours
+  end
+  else    // ...si aucune porte disponible, on revient à la cellule précédente
+    begin
+      dec(nbpr);
+      ptec := tbpr[nbpr-1];
+    end;
+end;
+
+procedure TMainForm.SearchClick(Sender: TObject);
+var  chm : array of TPoint;
+     tdep,tarv : TPoint;
+     i,nb,px,py : integer;
+begin
+  RandomMaze.Canvas.Brush.Color := clBlue;
+  RandomMaze.Canvas.FillRect(Rect(25,25,50,50));  // tracé de l'entrée
+  RandomMaze.Canvas.Brush.Color := clYellow;
+  RandomMaze.Canvas.FillRect(Rect(31*25,21*25,31*25+25,21*25+25)); // et de la sortie
+  RandomMaze.Repaint;
+  tdep.X := 1;
+  tdep.Y := 1;
+  tarv.X := 31;
+  tarv.Y := 21;
+  nb := -1;
+  if CheminOk(tdep,tarv) then
+  begin
+    SetLength(chm,High(chemin)+1);
+    for i := High(chemin) downto 0 do
+    begin
+      chm[i] := chemin[i];
+      inc(nb);
+    end;
+    for i := 0 to nb do
+    begin
+      px := chm[i].X * 25 + 1;
+      py := chm[i].Y * 25 + 1;
+      RandomMaze.Canvas.Draw(px,py,pc);
+    end;
+  end
+  else Trace(High(chm));
+end;
+
+end.
+
+

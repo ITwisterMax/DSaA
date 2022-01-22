@@ -1,0 +1,218 @@
+program Laba2;
+
+{$APPTYPE CONSOLE}
+{$R *.res}
+
+uses
+  System.SysUtils;
+
+type
+  tpelement = ^telement;
+
+  telement = record
+    stepen: integer; // степень элемента
+    koaf: integer; // коаффицент элемента, вводимый пользователем
+    next: tpelement; // указатель на следующий элемент
+  end;
+
+var
+  head1, head2: tpelement;
+
+procedure enter(const n: integer; var head: tpelement);
+var
+  I: integer;
+  temp: tpelement;
+begin
+  new(head);
+  head.next := nil;
+  temp := head;
+  for I := n downto 0 do
+  begin
+    new(temp^.next);
+    temp := temp^.next;
+    writeln('Введите коаффицент при ', I, ' степени');
+    readln(temp^.koaf);
+    temp^.stepen := I;
+    temp^.next := nil;
+  end;
+end;
+
+procedure output(const head: tpelement);
+var
+  temp: tpelement;
+begin
+  temp := head;
+  while (temp^.next <> nil) do
+  begin
+    temp := temp^.next;
+    if temp^.koaf <> 0 then
+      if temp^.stepen = 0 then
+      begin
+        if temp^.koaf > 0 then
+          write(' + ');
+        write(temp^.koaf)
+      end
+      else
+      begin
+        if temp^.koaf > 0 then
+          write(' + ');
+        write(temp^.koaf, 'x^', temp^.stepen)
+      end;
+  end;
+  writeln;
+end;
+
+  function equality(head1,head2 : tpelement): boolean;
+  var temp1, temp2 : tpelement;
+  begin
+  result := true ;
+  temp1 := head1^.next;
+  temp2 := head2^.next ;
+  while temp1 <> nil do
+   begin
+    if temp1^.koaf <> temp2^.koaf then Result := false ;
+    temp1 := temp1^.next ;
+    temp2 := temp2^.next ;
+   end;
+  end;
+  function meaning(head : tpelement; var x : integer): integer;
+  var temp : tpelement ;
+      i, sl : integer ;
+  begin
+   result := 0 ;
+   temp := head^.next ;
+   while temp <> nil do
+    begin
+    sl := 1 ;
+     i := 1 ;
+     while (i <= temp^.stepen) do
+      begin
+       sl:= sl * x ;
+       inc(i) ;
+      end;
+     sl := temp^.koaf * sl ;
+     result := result + sl ;
+     temp := temp^.next ;
+    end;
+  end;
+  function add(head1,head2 : tpelement): string;
+   var temp1, temp2 : tpelement;
+  begin
+  result := '' ;
+  temp1 := head1^.next;
+  temp2 := head2^.next ;
+   while temp1.stepen > temp2.stepen do
+    begin
+     if temp1^.koaf <> 0 then
+      if temp1^.stepen = 0 then
+      begin
+        if temp1^.koaf > 0 then
+          result := result + ' + ';
+        result := result + inttostr(temp1^.koaf);
+      end
+      else
+      begin
+        if temp1^.koaf > 0 then
+           result := result + ' + ';
+        result := result + inttostr(temp1^.koaf) + 'x^' + inttostr(temp1^.stepen) ;
+      end;
+     temp1 := temp1^.next ;
+    end;
+
+   while temp2.stepen > temp1.stepen do
+    begin
+     if temp2^.koaf <> 0 then
+      if temp2^.stepen = 0 then
+      begin
+        if temp2^.koaf > 0 then
+          result := result + ' + ';
+        result := result + inttostr(temp2^.koaf);
+      end
+      else
+      begin
+        if temp2^.koaf > 0 then
+           result := result + ' + ';
+        result := result + inttostr(temp2^.koaf) + 'x^' + inttostr(temp2^.stepen) ;
+      end;
+     temp2 := temp2^.next ;
+    end;
+
+
+  while (temp1 <> nil) and (temp2 <> nil) do   // когда степени элементов уже равны
+   begin
+    if (temp1^.koaf + temp2^.koaf > 0 ) then
+      result:= result + '+' ;
+    if (temp1^.koaf + temp2^.koaf <> 0 ) then
+     begin
+       result := result + inttostr(temp1^.koaf + temp2^.koaf) ;
+       if temp1.stepen <> 0 then
+         result := result + 'x^' + inttostr(temp1^.stepen);
+     end;
+    temp1 := temp1^.next ;
+    temp2 := temp2^.next ;
+   end;
+  end;
+var
+  n1, n2, x: integer;
+  key : char ;
+  f : boolean ;
+begin
+  writeln(' Введите степень первого многочлена :');
+  readln(n1);
+  while (n1 < 0) do
+  begin
+    writeln('Введите натуральное число : ');
+    readln(n1);
+  end;
+  enter(n1, head1);
+  writeln(' Полученный многочлен 1 : ');
+  output(head1);
+
+  writeln(' Введите степень второго многочлена :');
+  readln(n2);
+  while (n2 < 0) do
+  begin
+    writeln('Введите натуральное число : ');
+    readln(n2);
+  end;
+  enter(n2, head2);
+  writeln(' Полученный многочлен 2 : ');
+  output(head2);
+  f := true ;
+  while f do
+  begin
+  writeln ;
+  writeln('Что Вы хотите сделать с этими многочленами ?');
+  writeln('Введите цифру соответствующую нужному варианту ответа');
+  writeln('1 - проверить равенство многочленов.');
+  writeln('2 - найти значение многочлена 1 в целочисленной точке х.');
+  writeln('3 - найти значение многочлена 2 в целочисленной точке х.');
+  writeln('4 - вычислить сумму этих многочленов.');
+  writeln('0 - выход');
+  writeln;
+  readln(key);
+  writeln;
+   case key of
+   '1':
+    begin
+    if n1<>n2 then writeln('многочлены не равны')
+     else if equality(head1,head2) then writeln('многочлены равны.')
+            else writeln('многочлены не равны');
+    end;
+   '2':
+    begin
+     writeln('Введите значение x') ;
+     readln(x);
+     writeln('значение многочлена = ',meaning(head1,x));
+    end;
+   '3':
+    begin
+     writeln('Введите значение x') ;
+     readln(x);
+     writeln('значение многочлена = ',meaning(head2,x));
+    end;
+   '4': writeln(add(head1,head2)) ;
+   '0': f := false ;
+   end;
+  end;
+end.

@@ -1,0 +1,54 @@
+program Laba1;
+
+{$APPTYPE CONSOLE}
+
+{$R *.res}
+
+uses
+  System.SysUtils;
+
+type
+  PointerMan = ^Element;
+  Element = record
+    Data : Integer;
+    AdrNext : PointerMan;
+  end;
+
+var
+  First : PointerMan;
+  N, K : Integer;
+
+procedure make (x : PointerMan; N : Integer);
+var
+  i : Integer;
+begin
+  New(x);
+  for i := 1 to N do
+    begin
+      New(x^.AdrNext);
+      x := x^.AdrNext;
+      x^.Data := i;
+      Write (x^.Data, ' ');
+    end;
+  x^.AdrNext := nil;
+end;
+
+begin
+  Write('Введите количество человек N (от 1 до 64): ');
+  repeat
+    ReadLn(N);
+    if (N < 1) or (N > 64)  then
+      Write('Ошибка! Повторите ввод... ');
+  until (N >= 1) and (N <= 64);
+
+  Write('Введите номер K-тых людей, которых хотите удалить: ');
+  repeat
+    ReadLn(K);
+    if (K < 1) or (K > N)  then
+      Write('Ошибка! Повторите ввод... ');
+  until (K >= 1) and (K <= N);
+
+  make(First, N);
+
+  ReadLn;
+end.

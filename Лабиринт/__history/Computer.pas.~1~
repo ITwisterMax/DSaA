@@ -1,0 +1,240 @@
+unit Computer;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls, Vcl.StdCtrls,
+  Vcl.Samples.Spin;
+
+type
+  TMainForm = class(TForm)
+    Generate: TButton;
+    Find: TButton;
+    Load: TButton;
+    Save: TButton;
+    Draw: TButton;
+    Info: TPanel;
+    MazeX: TSpinEdit;
+    MazeY: TSpinEdit;
+    TextX: TLabel;
+    TextY: TLabel;
+    ScrollBox1: TScrollBox;
+    BackBuffer: TImage;
+    procedure GenerateClick(Sender: TObject);
+    procedure FormShow(Sender: TObject);
+
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+type
+  Location = record
+    left_wall, up_wall : Boolean;
+  end;
+
+  Maze = array of array of Location;
+
+var
+  MainForm : TMainForm;
+  Laberint : Maze;
+  CellSize : Byte = 24;
+
+implementation
+
+{$R *.dfm}
+
+procedure ShowMaze(TheMaze : Maze); { нарисовать лабиринт }
+
+var
+  x, y : Integer;
+  Height, Width : Integer; { высота и ширина лабиринта }
+
+begin
+  Width := High(TheMaze); { определить высоту и ширину }
+  Height := High(TheMaze[0]);
+
+  MainForm.BackBuffer.Width := (StrToInt(MainForm.MazeX.text) + 1) * CellSize;
+  MainForm.BackBuffer.Height := (StrToInt(MainForm.MazeY.text) + 1) * CellSize;
+
+  MainForm.BackBuffer.Picture.Bitmap.Width := MainForm.BackBuffer.Width;
+  MainForm.BackBuffer.Picture.Bitmap.Height := MainForm.BackBuffer.Height;
+
+  with MainForm.BackBuffer.Canvas do
+    begin { очистка буфера }
+      FillRect(Rect(0, 0, MainForm.BackBuffer.Width, MainForm.BackBuffer.Height));
+      for x := 0 to Width - 1 do
+        for y := 0 to Height - 1 do
+          begin
+            { если в локации есть верхняя стена }
+            if TheMaze[x, y].up_wall then
+              begin
+                MoveTo(x * CellSize, y * CellSize); { рисуем ее }
+                LineTo((x + 1) * CellSize, y * CellSize);
+              end;
+            { если в локации есть левая стена }
+            if (x <> 0) or ((x = 0) and (y <> 0))  then
+              if TheMaze[x, y].left_wall then
+                begin
+                  MoveTo(x * CellSize, y * CellSize); { рисуем и ее }
+                  LineTo(x * CellSize, (y + 1) * CellSize);
+                end;
+          end;
+      MoveTo(0, Height * CellSize); { рисуем стену снизу и }
+
+      LineTo(Width * CellSize, (Height) * CellSize); { справа от лабиринта }
+      MoveTo(Width * CellSize,  (Height - 1) * CellSize);
+      LineTo(Width * CellSize, 0);
+    end;
+end;
+
+function PrimGenerateMaze(Width, Height : Integer) : Maze;
+
+type
+  AttrType = (Inside, Outside, Border);   {тип "атрибут локации"}
+
+var
+  TheMaze : Maze;                        {сам лабиринт}
+  x, y, i : Integer;
+  xc, yc : Integer;
+  xloc, yloc : Integer;
+  Attribute : array of array of AttrType; {карта атрибутов}
+  IsEnd : Boolean;
+  counter : Integer;
+
+const
+  dx : array[1..4] of Integer = (1, 0, -1, 0);  {смещения}
+  dy : array[1..4] of Integer = (0, -1, 0, 1);
+
+label
+  ExitFor1,
+  ExitFor2,
+  ExitFor3; {используемые метки}
+
+
+procedure BreakWall(x, y, dx, dy : Integer); {разрушить стену}
+  begin                                    {между локациями}
+      if dx = -1 then TheMaze[x, y].left_wall := false
+      else
+        if dx = 1 then TheMaze[x + 1, y].left_wall := false
+        else
+          if dy = -1 then TheMaze[x, y].up_wall := false
+          else TheMaze[x, y + 1].up_wall := false;
+  end;
+
+begin
+  SetLength(Attribute, Width, Height);  {выделение памяти для атрибутов}
+  SetLength(TheMaze, Width + 1, Height + 1); {измерить размер лабиринта}
+
+  for x := 0 to Width - 1 do  {изначально все атрибуты}
+    for y := 0 to Height - 1 do  {равны Outside}
+      Attribute[x, y] := Outside;
+
+  for y := 0 to Height do   {все стены изначально}
+    for x := 0 to Width do  {существуют}
+      begin
+        TheMaze[x, y].left_wall := true;
+        TheMaze[x, y].up_wall := true;
+      end;
+
+  Randomize;
+  x := Random(Width); {выбираем начальную локацию}
+  y := Random(Height);
+  Attribute[x, y] := Inside; {и присваиваем ей атрибут Inside}
+
+  for i := 1 to 4 do  {всем ее соседям присваиваем}
+    begin             {атрибут Border}
+      xc := x + dx[i];
+      yc := y + dy[i];
+      if (xc >= 0) and (yc >= 0) and (xc < Width) and (yc < Height) then
+        Attribute[xc, yc] := Border;
+    end;
+
+  repeat       {главный цикл}
+    IsEnd := true;
+    counter := 0;
+    for x := 0 to Width - 1 do   {подсчитываем количество}
+      for y := 0 to Height - 1 do   {локаций с атрибутом Border}
+        if Attribute[x, y] = Border then counter := counter+1;
+
+    counter := Random(counter) + 1;  {выбираем из них}
+    for x := 0 to Width - 1 do       {одну случайную}
+      for y := 0 to Height - 1 do
+        if Attribute[x, y] = Border then
+          begin
+            counter:=counter - 1;
+            if counter = 0 then
+              begin
+                xloc := x;   {xloc,yloc-ее координаты}
+                yloc := y;
+                goto ExitFor1;   {выход из цикла}
+              end;
+          end;
+
+    ExitFor1:
+
+    Attribute[xloc,yloc] := Inside;  {присвоить ей атрибут Inside}
+    counter := 0;
+    for i := 1 to 4 do
+      begin
+        xc := xloc + dx[i];
+        yc := yloc + dy[i];
+        if (xc >= 0) and (yc >= 0) and (xc < Width) and (yc < Height) then
+          begin  {подсчитать количество локаций с атрибутом Inside}
+            if Attribute[xc, yc] = Inside then counter := counter + 1;
+            if Attribute[xc, yc] = Outside then {заменить атрибуты с}
+              Attribute[xc, yc] := Border;        {Outside на Border}
+          end;
+      end;
+
+      counter := Random(counter) + 1;  {выбрать случайную Inside-локацию}
+      for i := 1 to 4 do
+        begin
+          xc := xloc + dx[i];
+          yc := yloc + dy[i];
+          if (xc >= 0) and (yc >= 0) and (xc < Width)
+          and (yc < Height) and (Attribute[xc, yc] = Inside)then
+            begin
+              counter := counter - 1;
+              if counter = 0 then   {разрушить стену между ней и}
+                begin               {текущей локацией}
+                  BreakWall(xloc, yloc, dx[i], dy[i]);
+                  goto ExitFor2;
+                end;
+            end;
+        end;
+
+    ExitFor2:
+
+    for x := 0 to Width - 1 do   {определить, есть ли}
+      for y := 0 to Height - 1 do {хоть одна локация с}
+        if Attribute[x, y] = Border then  {атрибутом Border}
+          begin
+            IsEnd := false;  {если да, то продолжаем}
+            goto ExitFor3;  {выполнять алгоритм}
+          end;
+
+    ExitFor3:
+
+    ShowMaze(TheMaze);      {отобразить процесс генерации}
+    Application.ProcessMessages;
+
+  until IsEnd;
+
+  PrimGenerateMaze := TheMaze;
+end;
+
+procedure TMainForm.FormShow(Sender: TObject);
+begin
+  ScrollBox1.SetFocus;
+end;
+
+procedure TMainForm.GenerateClick(Sender: TObject);
+begin
+  Laberint := PrimGenerateMaze(StrToInt(MazeX.text), StrToInt(MazeY.text));
+  ShowMaze(Laberint);
+end;
+
+end.

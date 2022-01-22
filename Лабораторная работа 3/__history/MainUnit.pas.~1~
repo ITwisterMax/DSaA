@@ -1,0 +1,419 @@
+unit MainUnit;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.ComCtrls;
+
+type
+  TMainForm = class(TForm)
+    Info: TRichEdit;
+    Print: TButton;
+    Find: TButton;
+    SortA: TButton;
+    SortP: TButton;
+    Add: TButton;
+    AddP: TButton;
+    Del: TButton;
+    DelP: TButton;
+    Edit: TButton;
+    EditP: TButton;
+    Leave: TButton;
+    procedure LeaveClick(Sender: TObject);
+    procedure StartWork(Sender: TObject);
+    procedure PrintClick(Sender: TObject);
+  private
+    { Private declarations }
+  public
+    { Public declarations }
+  end;
+
+const
+  //Число элементов хеш-таблицы
+  HTCount = 34;
+
+type
+  TPT = ^TTermList;
+  PPT = ^TPageList;
+  FPT = ^TFindResultList;
+  APT = ^TAddressList;
+  SPT = ^TSortTermsList;
+
+  THashTable = array [1..HTCount] of TPT;
+
+  //Список терминов
+  TTermList = record
+    Word : string;
+    SubTerm : THashTable;
+    Pages : PPT;
+    Next : TPT;
+  end;
+
+  //Список страниц
+  TPageList = record
+    Page : Integer;
+    Next : PPT;
+  end;
+
+  //Список результатов поиска
+  TFindResultList = record
+    Address : APT;
+    Result : TPT;
+    Next : FPT;
+  end;
+
+  //Список для хранения адреса
+  TAddressList = record
+    Point : string;
+    Next : APT;
+  end;
+
+  //Список для хранения отсортированных элементов
+  TSortTermsList = record
+    Word : string;
+    SubTerms : SPT;
+    Pages : PPT;
+    Next : SPT;
+  end;
+
+var
+  MainForm : TMainForm;
+  Terms : THashTable;
+  com : string;
+  upterm, p : string;
+  frez : TPT;
+  find : FPT;
+  AddHT : THashTable;
+  page, prev : PPT;
+  jLine : Integer;
+
+implementation
+
+{$R *.dfm}
+
+//Хеш-функция
+function H(name : string) : Integer;
+begin
+  name := AnsiUpperCase(name);
+
+  //Заменяем Ё на Е
+  if ord(name[1]) = 240 then
+    name[1] := char(133);
+
+  if (ord(name[1]) < 128) or (ord(name[1]) > 159) then
+    result := 1
+  else
+    result := ord(name[1]) - 191 + 1;
+end;
+
+//Инициализация хеш-таблицы.
+procedure Initialize(var HT : THashTable);
+var
+  i : Integer;
+
+begin
+  for i := 1 to HTCount do
+  begin
+    new(HT[i]);
+    HT[i]^.Next := nil;
+  end;
+end;
+
+//Создаем PPT по номеру страницы
+function GetPPT(page : Integer) : PPT;
+begin
+  New(result);
+  result^.Page := page;
+  result^.Next := nil;
+end;
+
+//Добавление страницы
+procedure AddPage(var first : PPT; page : PPT);
+var
+  x : PPT;
+
+begin
+  //Берём начало списка
+  x := first;
+  //Ищем конец
+  while x^.Next  <> nil do
+    x := x^.Next;
+  x^.Next := page;
+end;
+
+//Создание указателя TPT
+function GetTPT(word : string; page : PPT) : TPT;
+begin
+  New(result);
+  //Заполняем значение
+  result^.Word := Word;
+  //Заполняем страницы
+  New(result^.Pages);
+  result^.Pages^.Next := page;
+  //Заполняем подтермины
+  Initialize(result^.SubTerm);
+  result^.Next := nil;
+end;
+
+//Создание указателя SPT
+function GetSPT(word : string; page : PPT) : SPT;
+begin
+  New(result);
+  //Заполняем значение
+  result^.Word := Word;
+  //Заполняем страницы
+  New(result^.Pages);
+  result^.Pages^.Next := page;
+  //Заполняем подтермины
+  New(result^.SubTerms);
+  result^.Next := nil;
+end;
+
+//Поиск термина только в данной хеш-таблице (без перехода на нижние уровни)
+function LittleFindTerm(term : TPT; parrent : THashTable) : TPT;
+var
+  x : TPT;
+begin
+  //Определяем ячейку хеш-таблицы
+  x := parrent[H(term^.Word)]^.Next;
+
+  while (x <> nil) and (x^.Word <> term^.Word) do
+    x := x^.Next;
+
+  result := x;
+end;
+
+//Дописывает к списку first список plus, изменяя first так, чтобы он ссылался на конец нового списка
+procedure AddResultsToList(var first : FPT; var plus : FPT);
+var
+  x : FPT;
+begin
+  if first = nil then first := plus
+  else
+    first^.Next := plus;
+
+  if plus <> nil then
+    begin
+      x := plus;
+      while x^.Next <> nil do
+        x := x^.Next;
+      first := x;
+    end;
+end;
+
+//Копирование списка адресов
+function CopyAddress(x : APT) : APT;
+var
+  y, z : APT;
+begin
+  New(y);
+  result := y;
+
+  while x <> nil do
+  begin
+    y^.Point := x^.Point;
+    z := y;
+    New(y);
+    z^.Next := y;
+    x := x^.Next;
+  end;
+
+  z^.Next := nil;
+end;
+
+//Добавлние элемента в список
+procedure AddAddress(var x, add : APT);
+var
+  y : APT;
+begin
+  y := x;
+
+  while y^.Next <> nil do
+    y := y.Next;
+
+  y^.Next := add;
+end;
+
+//Поиск термина (рекурсивный вызов)
+function FTerm(Address : APT; term : TPT; parrent : THashTable) : FPT;
+var
+  i : Integer;
+  x : TPT;
+  rez, t1, t2, t3 : FPT;
+  adr, t : APT;
+begin
+  x := LittleFindTerm(term, parrent);
+
+  New(rez);
+  rez^.Next := nil;
+  t1 := rez;
+
+  if x <> nil then
+  begin
+    New(t2);
+    t2^.Address := Address;
+    t2^.Result := x;
+    t2^.Next := nil;
+    AddresultsToList(t1, t2);
+  end;
+
+  //Просматриваем все элемнты ниже текущего уровня
+  for i := 1 to HTCount do
+    begin
+      x := parrent[i]^.Next;
+
+      //Просматриваем список
+      while x <> nil do
+        begin
+          //Дописываем к адресу текущий элемент
+          New(t);
+          t^.Point := x^.Word;
+          t^.Next := nil;
+          adr := CopyAddress(Address);
+          AddAddress(adr, t);
+
+          //Продолжим поиск на уровень ниже
+          t3:=FTerm(adr, term, x^.SubTerm);
+          AddResulTSToList(t1, t3);
+          x := x^.Next;
+        end; //While
+    end;//for
+
+  FTerm := rez^.Next;
+end;
+
+//Поиск термина во всём указателе
+function FindTerm(term : TPT) : FPT;
+var
+  Adr : APT;
+
+begin
+  New(Adr);
+  Adr^.Next := nil;
+
+  New(result);
+  result^.Next := FTerm(Adr, term, Terms);
+end;
+
+//Добавление термина в хеш-таблицу
+procedure AddTerm(var HT : ThashTable; Term : TPT);
+var
+  t : Integer;
+  prev : TPT;
+  x : TPT;
+begin
+  //Значение Хеш-функции;
+  t := H(Term^.Word);
+  prev := HT[t];
+  x := prev^.Next;
+
+  //Находим точку вставки или конец списка
+  while (x <> nil) and (AnsiLowerCase(x^.Word) < AnsiLowerCase(Term^.Word)) do
+  begin
+    x := x^.Next;
+    prev := prev^.Next;
+  end;
+
+  //Вставляем
+  prev^.Next := Term;
+  Term^.Next := x;
+end;
+
+//Вывод списка страниц
+procedure WritePageList(first : PPT);
+var
+  x : PPT;
+begin
+  x := first^.Next;
+
+  while x <> nil do
+  begin
+    MainForm.Info.Lines[jLine] := MainForm.Info.Lines[jLine] + IntToStr(x^.Page);
+    x := x^.Next;
+
+    //Запятая нужна только если впереди что-то есть
+    if x <> nil then
+      MainForm.Info.Lines[jLine] := MainForm.Info.Lines[jLine] + ',';
+  end;
+end;
+
+procedure WriteHT(table : THashTable; tabs : integer);
+  Forward;
+
+//Вывод термина с подтерминами и номерами страниц. Tabs - отступ от начала страницы
+procedure WriteTerm(term : TPT; tabs : integer; sub : boolean);
+var
+  i : integer;
+
+begin
+  //Необходимое число отступов
+  for i := 1 to tabs do
+    MainForm.Info.Lines[jLine] := MainForm.Info.Lines[jLine] + '   ';
+
+  MainForm.Info.Lines[jLine] := MainForm.Info.Lines[jLine] + term^.Word + ' ';
+  WritePageList(term^.Pages);
+  inc(jLine);
+
+  if sub then
+    WriteHT(term^.SubTerm, tabs + 1);
+end;
+
+//Вывод полного содержимого хеш-таблицы
+procedure WriteHT;
+var
+  i : Integer;
+  x : TPT;
+begin
+  for i := 1 to HTCount do
+  begin
+    //Вывод списка терминов
+    x := table[i]^.Next;
+
+    while x <> nil do
+    begin
+      WriteTerm(x, tabs, true);
+      x := x^.Next;
+    end;
+  end;
+end;
+
+procedure TMainForm.LeaveClick(Sender : TObject);
+begin
+  MainForm.Close;
+end;
+
+procedure TMainForm.PrintClick(Sender: TObject);
+begin
+  Info.Clear;
+  jLine := 0;
+  WriteHT(Terms, 0)
+end;
+
+procedure TMainForm.StartWork(Sender: TObject);
+begin
+  //Инициализируем основную хеш-таблицу указателей
+  Initialize(Terms);
+
+  //Начальное заполнение таблицы
+  AddTerm(Terms, GetTPT(('Табурет'), GetPPT(1)));
+  AddPage(Terms[H(('Табурет'))]^.Next^.Pages, GetPPT(11));
+  AddPage(Terms[H(('Табурет'))]^.Next^.Pages, GetPPT(21));
+  AddPage(Terms[H(('Табурет'))]^.Next^.Pages, GetPPT(31));
+
+  AddTerm(Terms[H(('Табурет'))]^.Next^.SubTerm, GetTPT('Черный', GetPPT(11)));
+  AddTerm(Terms[H(('Табурет'))]^.Next^.SubTerm, GetTPT('Коричневый', GetPPT(21)));
+  AddTerm(Terms[H(('Табурет'))]^.Next^.SubTerm, GetTPT('Желтый', GetPPT(31)));
+  AddTerm(FindTerm(GetTPT('Желтый', nil))^.Next^.Result^.SubTerm, GetTPT(('Деревяный'), GetPPT(31)));
+
+  AddTerm(Terms,GetTPT(('Стол'), nil));
+  AddPage(Terms[H(('Стол'))]^.Next^.Pages, GetPPT(55));
+  AddPage(Terms[H(('Стол'))]^.Next^.Pages, GetPPT(105));
+  AddPage(Terms[H(('Стол'))]^.Next^.Pages, GetPPT(155));
+
+  AddTerm(Terms[H(('Стол'))]^.Next^.SubTerm, GetTPT('Красный', GetPPT(155)));
+  AddTerm(Terms[H(('Стол'))]^.Next^.SubTerm, GetTPT('Синий', GetPPT(105)));
+  AddTerm(Terms[H(('Стол'))]^.Next^.SubTerm, GetTPT('Желтый', GetPPT(55)));
+end;
+
+end.

@@ -1,0 +1,20 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<BorlandProject>
+	<Transactions>
+    <Transaction>1899.12.30 00:00:00.000.945,=D:\Work\СиАОД\Лабораторная работа 4\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.715,D:\Work\СиАОД\Лабораторная работа 4\MainUnit.dfm=D:\Work\СиАОД\Лабораторная работа 4\Laba4.dfm</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.282,C:\Users\user\Documents\Embarcadero\Studio\Projects\Project1.dproj=D:\Work\СиАОД\Лабораторная работа 4\Laba4_.dproj</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.524,D:\Work\СиАОД\Лабораторная работа 4\Unit1.pas=D:\Work\СиАОД\Лабораторная работа 4\MyUnit.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.942,C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.dfm=D:\Work\СиАОД\Лабораторная работа 4\Laba4.dfm</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.173,D:\Work\СиАОД\Лабораторная работа 4\Laba4.dproj=D:\Work\СиАОД\Лабораторная работа 4\Laba4_.dproj</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.715,D:\Work\СиАОД\Лабораторная работа 4\MainUnit.pas=D:\Work\СиАОД\Лабораторная работа 4\Laba4.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.910,=C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.655,=C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.049,=C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.970,=C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.163,=C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.968,=C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.506,=C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas</Transaction>
+    <Transaction>1899.12.30 00:00:00.000.942,C:\Users\user\Documents\Embarcadero\Studio\Projects\Unit1.pas=D:\Work\СиАОД\Лабораторная работа 4\Laba4.pas</Transaction>
+  </Transactions>
+</BorlandProject>

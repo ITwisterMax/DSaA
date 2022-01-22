@@ -1,0 +1,537 @@
+unit MainUnit;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls, Vcl.Samples.Spin,
+  Vcl.Grids, Vcl.ExtCtrls, HelpUnit;
+
+const
+  //Бесконечно большое значение
+  Infinity = 100000;
+  //Радиус окружности вершины графа
+  Rad = 20;
+  //Длина стрелочки
+  ArrowLen = 25;
+  //Угол поворота линий описывающих стрелочку относительно ребра
+  ArrowRot = Pi / 12;
+  //Цвет кисти
+  PenColor = clBlack;
+  //Толщина кисти
+  PenWidth = 2;
+  //Цвета заливки
+  BrushColor1 = clRed;
+  BrushColor2 = clGreen;
+  BrushColor3 = clGray;
+
+type
+  //Тип вершины графа (для рисования)
+  TPoint = record
+    Name : Byte;
+    X, Y : Integer;
+  end;
+
+  //DeykstRes = array of Integer;
+  //Тип матрицы смежности
+  Matr = array of array of Integer;
+
+  //Тип формы
+  TGraphForm = class(TForm)
+    GraphImage: TImage;
+    GraphMatrix: TStringGrid;
+    FinalInfo: TListBox;
+    StartWork: TButton;
+    InfoN: TLabel;
+    InfoV1: TLabel;
+    InfoV2: TLabel;
+    N: TSpinEdit;
+    V1: TSpinEdit;
+    V2: TSpinEdit;
+    InfoGM: TLabel;
+    InfoFI: TLabel;
+    function FindWays : TList;
+    procedure FormCreate(Sender: TObject);
+    procedure StartWorkClick(Sender: TObject);
+    procedure NChange(Sender: TObject);
+
+  private
+    { Private declarations }
+
+  public
+    { Public declarations }
+  end;
+
+var
+  //Форма
+  GraphForm: TGraphForm;
+  //Матрица смежности
+  A : Matr;
+  //Список путей
+  Ways : TList;
+
+implementation
+
+{$R *.dfm}
+
+//+-----------------+
+//| Работа с графом |
+//+-----------------+
+
+//Рисование вершины
+procedure DrawPoint(var bmp : TBitmap; Point : TPoint);
+begin
+  //Полготовка среды для рисования
+  bmp.Canvas.Pen.Width := PenWidth;
+  bmp.Canvas.Pen.Color := PenColor;
+
+  //Рисуем
+  bmp.Canvas.Ellipse(Point.X - Rad, Point.Y - Rad, Point.X + Rad, Point.Y + Rad);
+  bmp.Canvas.FloodFill(Point.X, Point.Y, PenColor, fsBorder);
+
+  //Параметры текста
+  bmp.Canvas.Font.Name := 'Times New Roman';
+  bmp.Canvas.Font.Style := [fsBold];
+  bmp.Canvas.Font.Size := 10;
+
+  //Рисуем
+  bmp.Canvas.TextOut(Point.X - 4, Point.Y - 8, IntToStr(Point.Name + 1));
+end;
+
+//Рисование графа
+function Draw(BmpHeight, BmpWidth : Integer; Center : Byte) : TBitmap;
+var
+  BmpRad : Integer;
+  AngleStep : Real;
+  i, j : Integer;
+  Points : array of TPoint;
+  X1, X2, Y1, Y2, X3, Y3 : Integer;
+  Phi : Real;
+
+begin
+  //Количество вершин
+  SetLength(Points, High(A) + 1);
+
+  //Подготовка среды для рисования
+  Result := TBitmap.Create;
+  Result.Height := BmpHeight;
+  Result.Width := BmpWidth;
+  Result.Canvas.Pen.Width := PenWidth;
+  Result.Canvas.Pen.Color := PenColor;
+
+  //Радиус (размер картинки в полярных координатах)
+  if BmpHeight < BmpWidth then
+    BmpRad := (BmpHeight div 2) - Rad - 15
+  else
+    BmpRad := (BmpWidth div 2) - Rad - 15;
+  AngleStep := 2 * Pi / (High(A));
+
+  //Сами вершины
+  j := 0;
+  for i := 0 to High(A) do
+    begin
+      //Центр графа рисуем отдельно
+      if i = Center then Continue;
+
+      //Заносим вершину в список
+      Points[i].Name := i;
+      Points[i].X := BmpRad + 2 * Rad + 25 + Round(BmpRad * Cos(Pi / 10 + j * AngleStep));
+      Points[i].Y := BmpRad + Rad + 25 - Round(BmpRad * Sin(Pi / 10 + j * AngleStep));
+
+      //Рисуем
+      Result.Canvas.Brush.Color := BrushColor1;
+      if A[i, i] <> Infinity then
+        Result.Canvas.Brush.Color := BrushColor2;
+      DrawPoint(Result, Points[i]);
+      j := j + 1;
+    end;
+
+  //Центр графа
+  Points[Center].Name := Center;
+  Points[Center].X := BmpRad + Rad + 25;
+  Points[Center].Y := BmpRad + Rad + 25;
+
+  //Если есть путь в саму себя
+  Result.Canvas.Brush.Color := BrushColor1;
+  if A[Center, Center] <> Infinity then
+    Result.Canvas.Brush.Color := BrushColor2;
+
+  //Рисуем
+  DrawPoint(Result, Points[Center]);
+
+  //Рёбра
+  for i := 0 to High(A) do
+    for j := 0 to High(A) do
+      if A[i, j] <> Infinity then
+        begin
+          //Незначительная разница в координатах по высоте
+          if Abs(Points[i].Y - Points[j].Y) < Rad * 2 then
+            begin
+              Y1 := Points[i].Y;
+              Y2 := Points[j].Y;
+              //Ведём от левого края правого к правому краю левого
+              if Points[i].X < Points[j].X then
+                begin
+                  X1 := Points[i].X + Rad;
+                  X2 := Points[j].X - Rad
+                end
+              else
+                begin
+                  X1 := Points[i].X - Rad;
+                  X2 := Points[j].X + Rad
+                end;
+            end
+          else
+            //Большое различие по высоте
+            begin
+              X1 := Points[i].X;
+              X2 := Points[j].X;
+              //Ведём от нижнего края верхнего к верхнему краю нижнего
+              if Points[i].Y < Points[j].Y then
+                begin
+                  Y1 := Points[i].Y + Rad;
+                  Y2 := Points[j].Y - Rad
+                end
+              else
+                begin
+                  Y1 := Points[i].Y - Rad;
+                  Y2 := Points[j].Y + Rad
+                end;
+            end;
+
+          //Если не путь в саму себя
+          if i <> j then
+            begin
+              Result.Canvas.MoveTo(X1, Y1);
+              Result.Canvas.LineTo(X2, Y2);
+
+              //Уравнение ребра в полярных координатах с центром в результирующей вершине
+              Phi := ArcTan(Abs(Y1 - Y2) / Abs(X1 - X2));
+
+              //Определяем четверть
+              if Y2 - Y1 < 0 then
+                Phi := -Phi;
+              if X2 - X1 > 0 then
+                Phi := Pi - Phi;
+
+              //Сама стрелочка
+              X1 := X2 + Round(ArrowLen * Cos(Phi - ArrowRot));
+              Y1 := Y2 - Round(ArrowLen * Sin(Phi - ArrowRot));
+              Result.Canvas.LineTo(X1, Y1);
+              X3 := X2 + Round(ArrowLen * Cos(Phi + ArrowRot));
+              Y3 := Y2 - Round(ArrowLen * Sin(Phi + ArrowRot));
+              Result.Canvas.MoveTo(X2, Y2);
+              Result.Canvas.LineTo(X3, Y3);
+              Result.Canvas.LineTo(X1, Y1);
+
+              //Координаты текста
+              X1 := X2 + Round(ArrowLen * 2 * Cos(Phi));
+              Y1 := Y2 - Round(ArrowLen * 2 * Sin(Phi));
+
+              //Параметры текста
+              Result.Canvas.Font.Name := 'Times New Roman';
+              Result.Canvas.Font.Style := [fsBold];
+              Result.Canvas.Font.Size := 10;
+              Result.Canvas.Brush.Color := BrushColor3;
+
+              //Рисуем
+              Result.Canvas.TextOut(X1, Y1, IntToStr(A[i, j]));
+              Result.Canvas.Brush.Color := BrushColor1;
+            end
+          else
+            //Путь в саму себя
+            begin
+              //Параметры текста
+              Result.Canvas.Font.Name := 'Times New Roman';
+              Result.Canvas.Font.Style := [fsBold];
+              Result.Canvas.Font.Size := 10;
+              Result.Canvas.Brush.Color := BrushColor3;
+
+              //Рисуем
+              Result.Canvas.TextOut(Points[i].X - 2 * Rad, Points[i].Y - Rad div 2, IntToStr(A[i, j]));
+              Result.Canvas.Brush.Color := BrushColor1;
+            end;
+        end;
+end;
+
+//Центр графа
+function GraphCenter(FloidRes : Matr) : Byte;
+var
+  MaxWay : array of Integer;
+  i, j : Integer;
+
+begin
+  SetLength(MaxWay, High(A) + 1);
+
+  //Поиск самых длинных путей для каждой вершины
+  for i := 0 to High(A) do
+    begin
+      MaxWay[i] := FloidRes[0, i];
+      for j := 0 to High(A) do
+        if MaxWay[i] < FloidRes[j, i] then
+          MaxWay[i] := FloidRes[j, i];
+    end;
+
+  //Наименьший из наибольших путей
+  Result := 0;
+  for i := 0 to High(A) do
+    if MaxWay[i] < MaxWay[Result] then
+      Result := i;
+end;
+
+//Алгоритм Флойда
+function Floid : Matr;
+var
+  i, j, k : Integer;
+
+begin
+  SetLength(Result, High(A) + 1, High(A) + 1);
+  //Начальные значения из матрицы
+  for i := 0 to High(A) do
+    for j := 0 to High(A) do
+      Result[i, j] := A[i, j];
+
+  //Сам алгоритм
+  for k := 0 to High(A) do
+    for i := 0 to High(A) do
+      for j := 0 to High(A) do
+        if Result[i, k] + Result[k, j] < Result[i, j] then
+          Result[i, j] := Result[i, k] + Result[k, j];
+end;
+
+//Алгоритм Дейкстры
+{function Deykstra(start : Byte; out Way : DeykstRes) : DeykstRes;
+var
+  Used : Mn;
+  i, j, min : integer;
+
+begin
+  Used := [];
+  //Размерность результата
+  SetLength(Result, High(A) + 1);
+  SetLength(Way, High(A) + 1);
+  for i := 0 to High(Result) do
+    begin
+      //Прямые пути
+      Result[i] := A[start, i];
+      Way[i] := start;
+    end;
+
+  //Проходимся по каждой вершине
+  for j := 0 to High(A) do
+    begin
+      Used := Used + [start];
+      //Проходимся по каждому соседу текущей вершины
+      for i := 0 to High(Result) do
+        //Если еще не были в вершине
+        if not (i in Used) then
+          if Result[i] > Result[start] + A[start, i] then
+            begin
+              Result[i] := Result[start] + A[start, i];
+              Way[i] := start;
+            end;
+
+      //Следующая вершина  - минимальная и та, которую еще не посещали
+      min := MaxInt;
+      for i := 0 to High(Result) do
+        if not (i in Used) and (Result[i] < min) then
+          begin
+            min := Result[i];
+            start := i;
+          end;
+    end;
+end;}
+
+//Поиск путей между вершинами
+function TGraphForm.FindWays : TList;
+var
+  Src, Dest : Integer;
+  NullWay : TWay;
+
+//Рекурсивный поиск
+procedure FindRoute(V : Integer; Way : TWay);
+var
+  i : Integer;
+  NewWay : TWay;
+
+begin
+  //Нашли нужную вершину
+  if V = Dest then
+    AddToSortedList(Way, Ways)
+  else
+    //Идем к следующей вершине, если возможно
+    for i := 0 to High(A[V]) do
+      if (A[V, i] <> Infinity) and not (i in Way.Used) then
+        begin
+          NewWay.Used := Way.Used + [i];
+          NewWay.Name := Way.Name + IntToStr(i + 1) + ' ';
+          NewWay.Cost := Way.Cost + A[V, i];
+          FindRoute(i, NewWay);
+        end;
+end;
+
+begin
+  //Обнуление
+  Ways := NewList;
+  FinalInfo.Clear;
+
+  //Вершина-источник
+  Src := V1.Value - 1;
+  //Результирующая вершина
+  Dest := V2.Value - 1;
+
+  with NullWay do
+    begin
+      Name := IntToStr(Src + 1) + ' ';
+      Cost := 0;
+      Used := [Src];
+    end;
+
+  //Поиск пути
+  FindRoute(Src, NullWay);
+
+  //Если пути не нашлись
+  if (A[V1.Value - 1, V2.Value - 1] = Infinity) and (Ways^.Next = nil) then
+    begin
+      with NullWay do
+        begin
+          Name := IntToStr(V1.Value) + ' ' + IntToStr(V2.Value) + ' ';
+          Cost := 0;
+          Used := [V1.Value - 1] + [V2.Value - 1];
+        end;
+      AddToSortedList(NullWay, Ways);
+    end;
+
+  //Результат
+  Result := Ways;
+end;
+
+
+
+
+
+//+-----------+
+//| Интерфейс |
+//+-----------+
+
+//Создание формы
+procedure TGraphForm.FormCreate(Sender: TObject);
+var
+  i, j : Integer;
+
+begin
+  //Обнуление
+  GraphImage.Canvas.Brush.Color := clWhite;
+  FinalInfo.Clear;
+
+  //Создание и заполнение таблицы
+  N.Value := N.MaxValue;
+  GraphMatrix.RowCount := N.Value + 1;
+  GraphMatrix.ColCount:= N.Value + 1;
+
+  for i := 1 to GraphMatrix.ColCount - 1 do
+    GraphMatrix.Cells[i, 0] := 'V' + IntToStr(i);
+  for i := 1 to GraphMatrix.RowCount - 1 do
+    GraphMatrix.Cells[0, i] := 'V' + IntToStr(i);
+
+  for i := 1 to GraphMatrix.ColCount - 1 do
+    for j := 1 to GraphMatrix.ColCount - 1 do
+      GraphMatrix.Cells[j, i] := '1';
+end;
+
+//Изменение размерности
+procedure TGraphForm.NChange(Sender: TObject);
+begin
+  //Размеры таблицы
+  GraphMatrix.RowCount := N.Value + 1;
+  GraphMatrix.ColCount:= N.Value + 1;
+
+  //Корректировка значений V1, V2, N
+  V1.MaxValue := N.Value;
+  V2.MaxValue := N.Value;
+  if V1.Value > N.Value then
+    V1.Value := N.Value;
+  if V2.Value > N.Value then
+    V2.Value := N.Value;
+
+end;
+
+//Начало работы
+procedure TGraphForm.StartWorkClick(Sender: TObject);
+var
+  i, j : Integer;
+  Rez : Integer;
+  Code : Integer;
+  x, Ways : TList;
+  Center : Byte;
+  buf : String;
+
+begin
+  //Задание размеров матрицы
+  SetLength(A, GraphMatrix.RowCount - 1, GraphMatrix.RowCount - 1);
+
+  //Заполнение матрицы
+  for i := 1 to GraphMatrix.RowCount - 1 do
+    for j := 1 to GraphMatrix.ColCount - 1 do
+      begin
+        //Проверка допустимости ввода
+        Val(GraphMatrix.Cells[j, i], Rez, Code);
+        if Code = 0 then
+          if Rez = 0 then
+            A[i - 1, j - 1] := Infinity
+          else
+            A[i - 1, j - 1] := Rez
+        else
+          begin
+            ShowMessage('Недопустимое значение в ячейке (' + IntToStr(i) + ',' + IntToStr(j) + ')');
+            Exit;
+          end;
+      end;
+
+  //Если мы уже в нужной вершине
+  if V1.Value = V2.Value then
+    begin
+      FinalInfo.Clear;
+      FinalInfo.Items.Add('Вы уже в заданной вершине!');
+    end
+  //Иначе
+  else
+    begin
+      //Поиск всех путей
+      Ways := FindWays;
+
+      //Вывод всех путей
+      x := Ways^.Next;
+      i := 1;
+      FinalInfo.Items.Add('Пути по возрастанию длин:');
+      while x <> nil do
+        begin
+          if x^.Way.Cost = 0 then buf := 'oo'
+            else buf := IntToStr(x^.Way.Cost);
+
+          FinalInfo.Items.Add(IntToStr(i) + ': ' + x^.Way.Name + '(' + buf + ')');
+          x := x^.Next;
+          inc(i);
+        end;
+      FinalInfo.Items.Add('');
+
+      //Самый короткий путь
+      x := Ways^.Next;
+      FinalInfo.Items.Add('Самый короткий путь: ' + x^.Way.Name + '(' + IntToStr(x^.Way.Cost) + ')');
+
+      //Самый длинный путь
+      x := Ways;
+      while x^.Next <> nil do x := x^.Next;
+      FinalInfo.Items.Add('Самый длинный путь: ' + x^.Way.Name + '(' + IntToStr(x^.Way.Cost) + ')');
+    end;
+
+  //Центр графа
+  Center := GraphCenter(Floid);
+  FinalInfo.Items.Add('');
+  FinalInfo.Items.Add('Центр графа: ' + IntToStr(Center + 1));
+
+  //Рисуем граф
+  GraphImage.Picture := TPicture(Draw(GraphImage.Height, GraphImage.Width, Center));
+end;
+
+end.

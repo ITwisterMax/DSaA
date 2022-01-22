@@ -1,0 +1,260 @@
+program laba2;
+
+{$APPTYPE CONSOLE}
+
+{$R *.res}
+ uses
+  System.SysUtils;
+
+const
+  spisfilename = 'C:\Users\kseny\Desktop\делфи\сиаод\laba2\spisok.txt';
+
+type
+ element=record
+  phone_number:string[7];
+  name:string[20];
+ end;
+
+
+ pspisok=^tspisok;
+ tspisok= record
+  adrprev,adrnext:pspisok;
+  inf:element;
+ end;
+
+ pnewspisok=^tnewspisok;
+ tnewspisok=record
+  adrnext:pnewspisok;
+  inf:element;
+  end;
+
+
+
+ var
+ headspisok,currentspisok:pspisok;
+ spisfile:file of element;
+ headnew:pnewspisok;
+ procedure output(var Headspisok:pspisok);     //вывод списков в консоль
+var
+  tempspis: Pspisok;
+begin
+ tempspis := HeadSpisok;                         //вывод списка кандидата
+          if tempspis^.adrnext = headspisok then
+            writeln('Список пуст')
+          else
+          begin
+            writeln('|--------------------|--------------|');
+            writeln('|  название          |  телефон     |');
+            writeln('|                    |              |');
+            writeln('|--------------------|--------------|');
+             tempspis:=tempspis^.adrnext;
+            while tempspis <> headspisok do                //пока не конец списка, выводим очередной элемент списка
+            begin
+              with tempspis^.inf do
+                write( '|', name:20, '|',phone_Number:14,'|');
+              writeln;
+              writeln('|--------------------|--------------|');
+              tempspis := tempspis^.adrnext;
+            end;
+            writeln;
+          end;
+        end;
+
+
+
+procedure readingfile(var Headspisok:pspisok);
+var
+i: integer;
+  tempspis: Pspisok;
+begin
+          if FileExists
+            (spisfilename)
+            = false then
+          begin
+            assign(spisFile,
+              spisfilename);
+            Rewrite(spisFile);
+            CloseFile(spisFile);
+          end;
+          assign(spisFile,
+           spisfilename);
+          reset(spisFile);                  //открываем файл для чтения
+          tempspis := Headspisok;
+
+          i := 0;
+          while (not EoF(spisFile)) do                 //пока не конец файла, читаем очередную строку
+          begin
+            Seek(spisFile, i);
+            new(tempspis^.adrnext);
+            tempspis^.adrnext^.adrprev:=tempspis;
+
+
+            tempspis := tempspis^.adrnext;
+
+
+            read(spisFile, tempspis^.inf);
+
+            Inc(i);
+          end;
+          headspisok^.adrprev:=tempspis;
+          tempspis^.adrnext := headspisok;
+          CloseFile(spisFile);
+          writeln('Список успешно загружен');
+          writeln;
+        end;
+
+
+  procedure savefile (var headspisok:pspisok);
+  var
+  tempspis:pspisok;
+     begin
+          assign(spisFile, spisfilename);
+          Rewrite(spisFile);
+          tempspis := Headspisok;
+          if tempspis<>tempspis^.adrnext then
+            repeat
+              tempspis := tempspis^.adrnext;
+              write(spisFile, tempspis^.inf);
+            until tempspis^.adrnext = headspisok;
+
+          CloseFile(spisFile);
+     end;
+
+procedure addData(var Headspisok: Pspisok);    //добавление данных в список
+var
+  exit: boolean;
+  button: integer;
+  tempspis: Pspisok;
+  begin
+          tempspis := Headspisok;
+          while tempspis^.adrnext <> headspisok do         //идем в конец списка
+            tempspis := tempspis^.adrnext;
+          new(tempspis^.adrnext);               //выделяем память в конце списка
+          tempspis^.adrnext^.adrprev:=tempspis;
+          tempspis := tempspis^.adrnext;
+          tempspis^.adrnext := headspisok;
+          headspisok^.adrprev:=tempspis;
+
+          with tempspis^.inf do
+          begin
+            writeln('номер');
+            readln(phone_number);
+            writeln('название');
+            readln(name);
+          end;
+  end;
+
+procedure addnew(tempnew:pnewspisok;tempspis:pspisok);
+
+begin
+          while tempnew^.adrnext <> nil do         //идем в конец списка
+            tempnew := tempnew^.adrnext;
+          new(tempnew^.adrnext);                  //выделяем память в конце списка
+          tempnew := tempnew^.adrnext;
+          tempnew^.adrnext := nil;
+          tempnew^.inf:=tempspis^.inf;
+end;
+
+procedure sort (headnew:pnewspisok);
+var
+  previous, temp: Pnewspisok;
+  temp1: element;
+begin
+  previous := Headnew;
+  while previous^.adrnext <> nil do
+  begin
+    previous := previous^.adrnext;
+    temp := previous;
+    while temp^.adrnext <> nil do
+    begin
+      temp := temp^.adrnext;
+      if  previous^.inf.name > temp^.inf.name then
+      begin
+        temp1 := previous^.inf;
+        previous^.inf := temp^.inf;
+        temp^.inf := temp1;
+      end;
+
+  end;
+end;
+end;
+
+procedure output_1();
+var
+ tempnew:pnewspisok;
+begin
+ tempnew:=headnew;
+ writeln('|--------------------|--------------|');
+ writeln('| название           |  телефон     |');
+ writeln('|                    |              |');
+ writeln('|--------------------|--------------|');
+ while tempnew^.adrnext<>nil do
+            begin
+              with tempnew^.adrnext^.inf do
+                write( '|',name:20 , '|',phone_Number:14,'|');
+              writeln;
+              writeln('|--------------------|--------------|');
+              tempnew := tempnew^.adrnext;
+            end;
+ writeln;
+end;
+
+procedure spec_proc(var headspisok:pspisok);
+var
+tempspis:pspisok;
+tempnew:pnewspisok;
+
+ begin
+
+   begin
+   new(headnew);
+   tempnew:= headnew;
+   tempnew^.adrnext:=nil;
+   tempspis:=headspisok^.adrprev;
+   while tempspis<>headspisok do
+     begin
+     if length(tempspis^.inf.phone_number)<>3  then
+      addnew(tempnew,tempspis);
+      tempspis:=tempspis^.adrprev;
+     end;
+     sort(headnew);
+   end;
+  output_1;
+end;
+
+
+
+procedure mainmenu; // MainMenu
+var
+  button: integer;
+begin
+  // Output the menu
+  writeln('---------------------------------------------------------------------');
+  writeln('1.Просмотр списка                                                    |');
+  writeln('2.Добавление данных в список                                         |');
+ writeln('3.Формирование однонаправленного списка                              |');
+  writeln('4.Выход                                                              |');
+  writeln('---------------------------------------------------------------------');
+
+  readln(button);
+  case button of
+     1: output(Headspisok);
+    2:  addData(Headspisok);
+     3:spec_proc(Headspisok);
+     4:exit;
+  end;
+   if button<> 4 then
+    mainmenu;
+end;
+
+
+begin
+  new(Headspisok);               //выделяем память для головы списка
+  Currentspisok := Headspisok;
+  CurrentSpisok^.adrnext := headspisok;
+  CurrentSpisok^.adrprev := headspisok;
+  readingfile(Headspisok);
+  mainmenu;
+  savefile(HeadSpisok);
+  ReadLn;
+end.

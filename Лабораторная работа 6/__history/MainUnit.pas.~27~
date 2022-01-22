@@ -1,0 +1,845 @@
+unit MainUnit;
+
+interface
+
+uses
+  Winapi.Windows, Winapi.Messages, System.SysUtils, System.Variants, System.Classes, Vcl.Graphics,
+  Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.ExtCtrls, Vcl.Imaging.jpeg,
+  Vcl.StdCtrls;
+
+const
+  //Количество элементов
+  N = 50;
+  //Радиус круга
+  Rad = 20;
+  //Растояние между уровнями
+  Len = 30;
+  //Цвет кисти
+  PenColor = clBlack;
+  //Толщина кисти
+  PenWidth = 2;
+  //Цвета заливки
+  BrushColor1 = clWhite;
+  BrushColor2 = clRed;
+  BrushColor3 = clGreen;
+
+type
+  //Указатель на структуру дерева
+  Tree = ^TreeEl;
+
+  TreeEl = record
+    //Левый и правый сын
+    Left : Tree;
+    Right : Tree;
+    //Значение
+    Value : Integer;
+    //Правая нить
+    Thread : Boolean;
+    //Координаты круга
+    X, Y : Integer;
+  end;
+
+  //Тип формы
+  TTreeForm = class(TForm)
+    ImageTree: TImage;
+    CreateTree: TButton;
+    FlashTree: TButton;
+    Symmetric: TButton;
+    Direct: TButton;
+    AddElement: TButton;
+    DeleteElement: TButton;
+    Back: TButton;
+    procedure FormCreate(Sender: TObject);
+    procedure CreateTreeClick(Sender: TObject);
+    procedure SymmetricClick(Sender: TObject);
+    procedure FlashTreeClick(Sender: TObject);
+    procedure DirectClick(Sender: TObject);
+    procedure AddElementClick(Sender: TObject);
+    procedure BackClick(Sender: TObject);
+    procedure DeleteElementClick(Sender: TObject);
+
+  private
+    { Private declarations }
+
+  public
+    //Дерево
+    NowTree : Tree;
+    //Текущее число элементов
+    currN : Integer;
+    //Картинка дерева
+    bmp : TBitmap;
+  end;
+
+var
+  //Форма
+  TreeForm: TTreeForm;
+
+implementation
+
+{$R *.dfm}
+
+//+------------------+
+//| Работа с деревом |
+//+------------------+
+
+//Пунктирная линия между двумя точками
+procedure PunktLineTo(x0, y0, x, y : Integer; var bmp : TBitmap);
+var
+  x1, y1, x2, y2, i : Integer;
+begin
+  //Идём от левого к правому
+  if x > x0 then
+    begin
+      x1 := x0; y1 := y0;
+      x2 := x;  y2 := y;
+    end
+  else
+    begin
+      x1 := x;  y1 := y;
+      x2 := x0; y2 := y0;
+    end;
+
+  //Часть по оси Ox
+  i := x1;
+  while i < x2 do
+  begin
+    bmp.Canvas.MoveTo(i, y1);
+    if i + 5 < x2 then
+      bmp.Canvas.LineTo(i + 5, y1)
+    else
+      bmp.Canvas.LineTo(x2, y1);
+    i := i + 10;
+  end;
+
+  //Часть по оси Oy
+  i := y1;
+  if y1 > y2 then
+    while i > y2 do
+    begin
+      bmp.Canvas.MoveTo(x2, i);
+      if i - 5 > y2 then
+        bmp.Canvas.LineTo(x2, i - 5)
+      else
+        bmp.Canvas.LineTo(x2, y2);
+      i := i - 10;
+    end
+  else
+    while i < y2 do
+    begin
+      bmp.Canvas.MoveTo(x2, i);
+      if i + 5 < y2 then
+        bmp.Canvas.LineTo(x2, i + 5)
+      else
+        bmp.Canvas.LineTo(x2, y2);
+      i := i + 10;
+    end;
+end;
+
+//Прошивка (правая симметричная)
+procedure GoFlash(El : Tree; var bmp : TBitmap);
+var
+  prev, start : Tree;
+
+//Рекурсивны вызов. Сама прошивка  и обход
+procedure RFlash(El : Tree; var bmp : TBitmap);
+begin
+  if El = nil then Exit;
+
+  //Левое поддерево
+  RFlash(El^.Left, bmp);
+
+  //Прошивка
+  if (prev^.Right = nil) and (prev <> start) then
+  begin
+    //Нить
+    prev^.Thread:=True;
+    //Указываем на текущий
+    prev^.Right:=El;
+    PunktLineTo(prev^.X + Rad, prev^.Y, El^.X, El^.Y + Rad, bmp);
+  end;
+  prev := El;
+
+  //Правое поддерево
+  if not El^.Thread then
+    RFlash(El^.Right, bmp);
+end;
+
+begin
+  //Начальное значение предыдущего элемента
+  prev := El;
+  start := El;
+
+  //Сама прошивка и обход
+  RFlash(El, bmp);
+
+  //Если надо, заводим линию на голову из последнего элемента
+  if (prev^.Right = nil) and (prev <> start) then
+  begin
+    //Нить
+    prev^.Thread := True;
+    //Указываем на текущий
+    prev^.Right := El;
+    PunktLineTo(prev^.X + Rad, prev^.Y, bmp.Width - 20, prev^.Y, bmp);
+    PunktLineTo(bmp.Width - 20, prev^.Y, El^.X + Rad, El^.Y, bmp);
+  end;
+end;
+
+//Добавление элемента в дерево
+procedure Add(El : Integer; var Rez : Tree);
+begin
+  //Если лист, то вставляем
+  if Rez = nil then
+    begin
+      New(Rez);
+      Rez^.Value := El;
+      Rez^.Left := nil;
+      Rez^.Right := nil;
+      Rez^.Thread := False;
+    end
+  //Если значение меньше корня, то идем влево
+  else if El < Rez^.Value then Add(El,Rez^.Left)
+  //Если значение больше корня, то идем вправо
+  else if El > Rez^.Value then Add(El,Rez^.Right)
+end;
+
+//Удаление нитей
+procedure DelThread(var El : Tree);
+begin
+  if El = nil then Exit;
+
+  //Левое поддерево
+  DelThread(El^.Left);
+  if El^.Thread = False then
+  //Правое поддерево
+    DelThread(El^.Right);
+  if El^.Thread then
+  begin
+    El^.Thread := False;
+    El^.Right := nil;
+  end;
+end;
+
+//Удаление элемента из дерева
+procedure DelEl(val : Integer; var Der, PrevEl : Tree);
+var
+  prev, El, x : Tree;
+  function Find(val : Integer; var Der : Tree) : Tree;
+  begin
+    if Der = nil then
+    begin
+      Result := Der;
+      Exit;
+    end;
+    if Der^.Value = val then
+    //Элемент найден
+      Result := Der
+    else
+    begin
+      prev := Der;
+      if Der^.Value < val then
+        Result := Find(val, Der^.Right)
+      else
+        Result := Find(val, Der^.Left)
+    end;
+  end;
+begin
+  //Ищем элемент
+  prev := PrevEl;
+  El := Find(val, Der);
+  //Элемент не найден
+  if El = nil then
+  begin
+    ShowMessage('Элемент дерева не найден...');
+    Exit;
+  end;
+  //Элемент - лист или только правое поддерево
+  if (El^.Left = nil) then
+  begin
+    if prev^.Left = El then
+      prev^.Left:=El^.Right
+    else
+      prev^.Right:=El^.Right;
+    Dispose(El);
+  end
+  //Элемент - только левое поддерево
+  else if (El^.Right = nil) or (El^.Thread) then
+  begin
+    if prev^.Left = El then
+      prev^.Left:=El^.Left
+    else
+      prev^.Right:=El^.Left;
+    Dispose(El);
+  end
+  //Элемент - оба поддерева
+  else
+  begin
+    //Поиск самого левого элемента правого поддерева
+    x := El^.Right;
+    while x^.Left <> nil do
+      x := x^.Left;
+    //Запоминаем его значение
+    El^.Value := x^.Value;
+    //Удаляем этот элемент
+    DelEl(x^.Value, El^.Right,El)
+  end;
+end;
+
+//Рисование древа (Y - расстояние от верха до уровня, X1 и X2 - расстояния слева и справа)
+procedure Draw(El : Tree; Y, X1, X2 : Integer; var bmp : TBitmap);
+begin
+  //Текущий элемент
+  bmp.Canvas.Brush.Color := BrushColor1;
+  bmp.Canvas.Ellipse((X1 + X2) div 2 - Rad, Y, (X1 + X2) div 2 + Rad, Y + Rad * 2);
+  bmp.Canvas.FloodFill((X1 + X2) div 2, Y + Rad, PenColor, fsBorder);
+  bmp.Canvas.TextOut((X1 + X2) div 2 - 10, Y + 10, IntToStr(El^.Value));
+
+  El^.X := (X1 + X2) div 2;
+  El^.Y := Y + Rad;
+
+  //Левое поддерево
+  if El^.Left <> nil then
+    begin
+      //Линия
+      bmp.Canvas.MoveTo((X1 + X2) div 2,Y + Rad * 2);
+      bmp.Canvas.LineTo(((X1 + X2) div 2 + X1) div 2, Y + Rad * 2 + Len);
+      //Поддерево
+      Draw(El^.Left, Y + Rad * 2 + Len, X1,(X1 + X2) div 2, bmp);
+    end;
+
+  //Правое поддерево
+  if (El^.Right <> nil) and (not El^.Thread) then
+    begin
+      //Линия
+      bmp.Canvas.MoveTo((X1 + X2) div 2, Y + Rad * 2);
+      bmp.Canvas.LineTo(((X1 + X2) div 2 + X2) div 2, Y + Rad * 2 + Len);
+      //Поддерево
+      Draw(El^.Right, Y + Rad * 2 + Len,(X1 + X2) div 2, X2, bmp);
+    end;
+end;
+
+//Симметричный обход
+function GoSymmetric(El : Tree; var bmp : TBitmap) : String;
+begin
+  //Конец дерева
+  if El = nil then
+    begin
+      Result := '0 ';
+      Exit;
+    end;
+
+  //Вынужденные заходы
+  if bmp.Canvas.Pixels[El^.X + 10, El^.Y - 10] <> BrushColor3 then
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor1;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end
+  else
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor3;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end;
+  Result := IntToStr(El^.Value) + ' ';
+
+  //Левое поддерево
+  Result := Result + GoSymmetric(El^.Left, bmp);
+
+  //Обработанная вершина
+  bmp.Canvas.Brush.Color := BrushColor3;
+  bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+  bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+  TreeForm.ImageTree.Picture := TPicture(bmp);
+  Application.ProcessMessages;
+  Sleep(500);
+  Result:=Result + '(' + IntToStr(El^.Value) + ')' + ' ';
+
+  //Правое поддерево
+  Result := Result + GoSymmetric(El^.Right,bmp);
+
+  //Вынужденные заходы
+  if bmp.Canvas.Pixels[El^.X + 10, El^.Y - 10] <> BrushColor3 then
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor1;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end
+  else
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor3;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end;
+  Result := Result + IntToStr(El^.Value) + ' ';
+end;
+
+//Прямой обход
+function GoDirect(El : Tree; var bmp : TBitmap) : String;
+begin
+  //Конец дерева
+  if El = nil then
+    begin
+      Result := '0 ';
+      Exit;
+    end;
+
+  //Обработанная вершина
+  bmp.Canvas.Brush.Color := BrushColor3;
+  bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+  bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+  TreeForm.ImageTree.Picture := TPicture(bmp);
+  Application.ProcessMessages;
+  Sleep(500);
+  Result := Result + '(' + IntToStr(El^.Value) + ')' + ' ';
+
+  //Левое поддерево
+  Result := Result + GoDirect(El^.Left, bmp);
+
+  //Вынужденные заходы
+  if bmp.Canvas.Pixels[El^.X + 10, El^.Y - 10] <> BrushColor3 then
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor1;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end
+  else
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor3;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end;
+  Result := Result + IntToStr(El^.Value) + ' ';
+
+  //Правое поддерево
+  Result := Result + GoDirect(El^.Right, bmp);
+
+  //Вынужденные заходы
+  if bmp.Canvas.Pixels[El^.X + 10, El^.Y - 10] <> BrushColor3 then
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor1;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end
+  else
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor3;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end;
+  Result := Result + IntToStr(El^.Value) + ' ';
+end;
+
+//Концевой обход
+function GoBack(El : Tree; var bmp : TBitmap) : String;
+begin
+  //Конец дерева
+  if El = nil then
+  begin
+    Result := '0 ';
+    Exit;
+  end;
+
+  //Вынужденные заходы
+  if bmp.Canvas.Pixels[El^.X + 10, El^.Y - 10] <> BrushColor3 then
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor1;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end
+  else
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor3;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end;
+  Result := IntToStr(El^.Value) + ' ';
+
+  //Левое поддерево
+  Result := Result + GoBack(El^.Left, bmp);
+
+  //Вынужденные заходы
+  if bmp.Canvas.Pixels[El^.X + 10, El^.Y - 10] <> BrushColor3 then
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor1;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end
+  else
+    begin
+      bmp.Canvas.Brush.Color := BrushColor2;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+      Sleep(500);
+
+      bmp.Canvas.Brush.Color := BrushColor3;
+      bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+      bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+      TreeForm.ImageTree.Picture := TPicture(bmp);
+      Application.ProcessMessages;
+    end;
+  Result := Result + IntToStr(El^.Value) + ' ';
+
+  //Правое поддерево
+  Result := Result + GoBack(El^.Right, bmp);
+
+  //Обработанная вершина
+  bmp.Canvas.Brush.Color := BrushColor3;
+  bmp.Canvas.FloodFill(El^.X + 10, El^.Y - 10, PenColor, fsBorder);
+  bmp.Canvas.TextOut(El^.X - 10, El^.Y - Rad + 10, IntToStr(El^.Value));
+  TreeForm.ImageTree.Picture := TPicture(bmp);
+  Application.ProcessMessages;
+  Sleep(500);
+  Result:=Result + '(' + IntToStr(El^.Value) + ')' + ' ';
+end;
+
+
+
+
+
+//+-----------+
+//| Интерфейс |
+//+-----------+
+
+//Создание формы
+procedure TTreeForm.FormCreate(Sender: TObject);
+begin
+  //Задний фон картинки
+  ImageTree.Canvas.Brush.Color := BrushColor1;
+
+  //Закрываем кнопки
+  FlashTree.Enabled := False;
+  AddElement.Enabled := False;
+  DeleteElement.Enabled := False;
+  Symmetric.Enabled := False;
+  Direct.Enabled := False;
+  Back.Enabled := False;
+end;
+
+//Создание дерева
+procedure TTreeForm.CreateTreeClick(Sender: TObject);
+var
+  i, j : Integer;
+  InputString, buf : String;
+  Elements : array [1..N] of Integer;
+
+begin
+  //Проверка введенных элементов и их запись в массив
+  InputString := InputBox('Создание дерева', 'Введите элементы дерева через пробел:', '');
+  InputString := Trim(InputString);
+  if InputString = '' then Exit;
+
+  i := 1;
+  j := 1;
+  while (i <= Length(InputString)) do
+    begin
+      buf := '';
+
+      while (InputString[i] <> ' ') and (i <= Length(InputString)) do
+        begin
+          if (InputString[i] in ['0'..'9']) then
+            begin
+              buf := buf + InputString[i];
+              inc(i);
+            end
+          else
+            begin
+              ShowMessage('Элементы дерева введены неверно...');
+              Exit;
+            end;
+        end;
+      while (InputString[i] = ' ') do inc(i);
+
+      Elements[j] := StrToInt(buf);
+      inc(j);
+    end;
+  currN := j - 1;
+
+  //Строим дерево
+  NowTree := nil;
+  for i := 1 to currN do
+    Add(Elements[i], NowTree);
+
+  //Рисуем дерево
+  bmp := TBitmap.Create;
+  with bmp do
+    begin
+      //Параметры текста
+      Canvas.Font.Name := 'Times New Roman';
+      Canvas.Font.Style := [fsBold];
+      Canvas.Font.Size := 10;
+
+      //Параметры рисования
+      Canvas.Pen.Color := PenColor;
+      Canvas.Pen.Width := PenWidth;
+      Canvas.Brush.Color := BrushColor1;
+
+      //Ширина и высота картинки
+      Width := ImageTree.Width;
+      Height := ImageTree.Height;
+    end;
+  //Рисование элементов
+  Draw(NowTree, Len, 0, ImageTree.Width, bmp);
+
+  //Отображаем дерево
+  ImageTree.Picture := TPicture(bmp);
+
+  //Открываем кнопки
+  FlashTree.Enabled := True;
+  AddElement.Enabled := True;
+  DeleteElement.Enabled := True;
+  Symmetric.Enabled := True;
+  Direct.Enabled := True;
+  Back.Enabled := True;
+end;
+
+//Прошивка дерева
+procedure TTreeForm.FlashTreeClick(Sender: TObject);
+begin
+  //Закрываем кнопки
+  AddElement.Enabled := False;
+  Symmetric.Enabled := False;
+  Direct.Enabled := False;
+  Back.Enabled := False;
+
+  //Прошивка
+  GoFlash(NowTree, bmp);
+
+  //Отображение картинки
+  ImageTree.Picture := TPicture(bmp);
+end;
+
+//Добавление элемента
+procedure TTreeForm.AddElementClick(Sender: TObject);
+var
+  i : Integer;
+  InputString : String;
+
+begin
+  //Проверка введенного элемента
+  InputString := InputBox('Добавление элемента', 'Введите элемент дерева:', '');
+  InputString := Trim(InputString);
+  if InputString = '' then Exit;
+
+  i := 1;
+  while (i <= Length(InputString)) do
+    begin
+      if not (InputString[i] in ['0'..'9']) then
+        begin
+          ShowMessage('Элемент дерева введен неверно...');
+          Exit;
+        end
+      else inc(i);
+    end;
+
+  //Добавление элемента
+  Add(StrToInt(InputString), NowTree);
+
+  //Обновление поля
+  Draw(NowTree, Len, 0, ImageTree.Width, bmp);
+  ImageTree.Picture := TPicture(bmp);
+end;
+
+//Удаление элемента
+procedure TTreeForm.DeleteElementClick(Sender: TObject);
+var
+  i : Integer;
+  InputString : String;
+  x : Tree;
+
+begin
+  //Проверка введенного элемента
+  InputString := InputBox('Удаление элемента', 'Введите элемент дерева:', '');
+  InputString := Trim(InputString);
+  if InputString = '' then Exit;
+
+  i := 1;
+  while (i <= Length(InputString)) do
+    begin
+      if not (InputString[i] in ['0'..'9']) then
+        begin
+          ShowMessage('Элемент дерева введен неверно...');
+          Exit;
+        end
+      else inc(i);
+    end;
+
+  if NowTree^.Value = StrToInt(InputString) then
+    if (NowTree^.Left = nil) and ((NowTree^.Right = nil) or (NowTree^.Thread = True)) then
+      begin
+        //Зануляем дерево
+        NowTree := nil;
+
+        //Обновление поля
+        bmp.Canvas.Brush.Color := BrushColor1;
+        bmp.Canvas.FillRect(Rect(0, 0, bmp.Width, bmp.Height));
+        ImageTree.Picture := TPicture(bmp);
+
+        //Закрываем кнопки
+        FlashTree.Enabled := False;
+        AddElement.Enabled := False;
+        DeleteElement.Enabled := False;
+        Symmetric.Enabled := False;
+        Direct.Enabled := False;
+        Back.Enabled := False;
+
+        ShowMessage('Дерево полностью удалено...');
+        Exit;
+      end;
+
+  //Добавляем головную вершину
+  New(x);
+  x^.Left := NowTree;
+  x^.Right := x;
+  x^.Value := -1;
+  NowTree := x;
+
+  //Удаление нитей
+  DelThread(NowTree^.Left);
+  //Удаление элемента
+  DelEl(StrToInt(InputString), NowTree^.Left, NowTree);
+  NowTree := x^.Left;
+
+  //Обновление поля
+  bmp.Canvas.Brush.Color := BrushColor1;
+  bmp.Canvas.FillRect(Rect(0, 0, bmp.Width, bmp.Height));
+  Draw(NowTree, Len, 0, ImageTree.Width, bmp);
+  //По необходимости прошивка
+  if not Symmetric.Enabled then GoFlash(NowTree, bmp);
+  ImageTree.Picture := TPicture(bmp);
+end;
+
+//Симметричный обход
+procedure TTreeForm.SymmetricClick(Sender: TObject);
+begin
+  //Результат обхода
+  ShowMessage(GoSymmetric(NowTree, bmp));
+
+  //Обновление поля
+  Draw(NowTree, Len, 0, ImageTree.Width, bmp);
+  ImageTree.Picture := TPicture(bmp);
+end;
+
+//Прямой обход
+procedure TTreeForm.DirectClick(Sender: TObject);
+begin
+  //Результат обхода
+  ShowMessage(GoDirect(NowTree, bmp));
+
+  //Обновление поля
+  Draw(NowTree, Len, 0, ImageTree.Width, bmp);
+  ImageTree.Picture := TPicture(bmp);
+end;
+
+//Концевой обход
+procedure TTreeForm.BackClick(Sender: TObject);
+begin
+  //Результат обхода
+  ShowMessage(GoBack(NowTree, bmp));
+
+  //Обновление поля
+  Draw(NowTree, Len, 0, ImageTree.Width, bmp);
+  ImageTree.Picture := TPicture(bmp);
+end;
+
+end.

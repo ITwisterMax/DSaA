@@ -1,0 +1,284 @@
+unit MyUnit;
+
+interface
+const
+  QueueCount = 3;
+
+type
+  ListPT = ^TTimeList;
+  QueueElPT = ^TQueueList;
+
+  TTimeList = record
+    Next : ListPT;
+    Value : Integer;
+  end;
+
+  TQueueList = record
+    Input : Integer;
+    Time : ListPT;
+    Next : QueueElPT;
+  end;
+
+  TQueue = record
+    Head : QueueElPT;
+    Tail : QueueElPT;
+    Count : Integer;
+  end;
+
+  TQueueMas = array[1..QueueCount] of TQueue;
+
+var
+  TimeNeed : integer;
+  procedure Initialize(TaktT, InputT : integer);
+  function AllTakts(var standing : integer) : integer;
+
+implementation
+const
+  OperationCount = 11;
+  Values : array[1..QueueCount, 1..3, 1..OperationCount] of integer = (
+    (
+      ( 6,8,6,3,2,4,5,3,4,5,0 ),
+      ( 5,3,2,1,2,3,4,5,6,8,0 ),
+      ( 3,4,6,8,9,5,3,2,1,2,0 )
+    ),
+    (
+      ( 2,3,2,4,2,1,1,6,8,9,0 ),
+      ( 9,3,3,4,2,1,6,7,5,4,3 ),
+      ( 3,2,3,1,4,6,8,5,3,3,3 )
+    ),
+    (
+      ( 3,4,5,2,6,2,7,8,9,3,4 ),
+      ( 2,1,2,3,3,4,5,6,3,5,4 ),
+      ( 0,0,0,0,0,0,0,0,0,0,0 )
+    )
+  );
+
+  ObjCount : array[1..QueueCount] of integer = (3,3,2);
+
+var
+  TaktTime, InputTime : integer;
+  Objects : TQueueMas;
+
+//Взять элемент с головы очереди
+function GetFromQueue(var q : TQueue) : QueueElPT;
+begin
+  if q.Head <> nil then
+    begin
+      result := q.Head;
+      q.Head := q.Head^.Next;
+      q.Count := q.Count - 1;
+    end
+  else
+    result := nil;
+end;
+
+//Добавить элемент в хвост очереди
+procedure AddToQueue(var q : TQueue; var x : QueueElPT);
+begin
+  x^.Next := nil;
+  if q.Head <> nil then
+    q.Tail^.Next := x
+  else
+    q.Head := x;
+  q.Tail := x;
+  q.Count := q.Count + 1;
+end;
+
+//Выполнить необходимые действия с объектом obj в ЦП из очереди Queue.
+//В standing записывается время простоя
+procedure DoCPU(var Queue : TQueue; var obj : QueueElPT; var standing : integer);
+var
+  temp : ListPT;
+  x : QueueElPT;
+
+begin
+  //Если времени такта достаточно или больше
+  if obj^.Time^.Next^.Value <= TaktTime then
+    begin
+      //Дописываю время простоя процессора
+      //(если уложились точь-в-точь, 0 ничего не изменит)
+      standing := standing + TaktTime - obj^.Time^.Next^.Value;
+
+      //Удаляю эту операцию из очереди на выполнение
+      temp := obj^.Time^.Next;
+      obj^.Time^.Next := obj^.Time^.Next^.Next;
+      Dispose(temp);
+      //Показываю, что необходим ввод
+      obj^.Input := InputTime;
+    end
+  //Времени такта не достаточно
+  else
+    //Просто учитываем отработанное время
+    Dec(obj^.Time^.Next^.Value, TaktTime);
+
+  //Забираем элемент из очереди
+  x := GetFromQueue(Queue);
+  //Если он еще не закончил - снова в очередь, но в конец
+  if obj^.Time^.Next <> nil then
+    AddToQueue(Queue, x)
+  else
+    //С объектом отработали - овободим память
+    Dispose(obj)
+end;
+
+//Выполнить необходимые операции без доступа к ЦП
+procedure DoNotCPU(var obj : QueueElPT);
+begin
+  if (obj^.Input <> 0) and (obj^.Input >= TaktTime) then
+    obj^.Input := obj^.Input - TaktTime
+  else if (obj^.Input <> 0) then
+    obj^.Input := 0;
+end;
+
+//Оповещает о прошедщем такте всех, кроме объекта obj
+procedure DoSmth(var obj : QueueElPT);
+var
+  i,j : integer;
+  x : QueueElPT;
+
+begin
+  //Для всех приоритетов
+  for i := 1 to QueueCount do
+    begin
+      x := Objects[i].Head;
+      //Просматриваем очередь
+      for j := 1 to  Objects[i].Count do
+        begin
+          //Если элемент не obj
+          if x <> obj then
+            DoNotCPU(x);
+          x := x^.Next;
+        end;
+    end;
+end;
+
+//Проводим 1 такт. standing - время простоя процессора на этом такте
+procedure Takt(var standing : integer);
+var
+  i, j : integer;
+  x : QueueElPT;
+  q : ^TQueue;
+
+begin
+  //Ищем объект нуждающийся в процессоре с учётом приоритета
+  i := 1;
+  x := nil;
+  while i <= QueueCount do
+    begin
+      //Просматриваем очередь
+      for j := 1 to Objects[i].Count do
+        begin
+          x := Objects[i].Head;
+
+          //Если необходим ЦП
+          if x^.Input = 0 then
+            begin
+              q := @Objects[i];
+              //Нашли, дальше идти не надо
+              break;
+            end
+          //ЦП не нужен
+          else
+            begin
+              //Перемещаем в конец очереди.
+              x := GetFromQueue(Objects[i]);
+              AddToQueue(Objects[i], x);
+              x := nil;
+            end;
+        end;
+
+      //Если x <> nil - мы нашли то, что нам нужно, дальше работать нет смысла
+      if x <> nil then
+        break;
+
+      i := i + 1;
+    end;
+  if x <> nil then
+    //Отдаём процессор данному объекту
+    DoCPU(q^, x, standing)
+  else
+    //Некому работать - такт в пустую
+    standing := standing + TaktTime;
+  //Остальных оповещаем о прошедшем такте
+  DoSmth(x);
+end;
+
+//Проверяет нужны ли ещё шаги.
+function NeedMore : boolean;
+var
+  i : integer;
+
+begin
+  result:=false;
+  for i := 1 to QueueCount do
+    if Objects[i].Count <> 0 then
+      result := true;
+end;
+
+//Выполняет все такты. Возвращает число прощедших тактов. Standing - время простоя
+function AllTakts(var standing : integer) : integer;
+begin
+  result := 0;
+  standing := 0;
+
+  //Пока не выполним всё, что надо
+  while NeedMore do
+    begin
+      Takt(standing);
+      result := result + 1;
+    end;
+end;
+
+//Инициализация системы начальными значениями. Промежутки времени берутся из параметров
+procedure Initialize(TaktT, InputT : integer);
+var
+  i,j,k : integer;
+  x : QueueElPT;
+  t, t1 : ListPT;
+
+begin
+  TimeNeed := 0;
+  //Записываем значения промежутков времени
+  TaktTime := TaktT;
+  InputTime := InputT;
+
+  //Заполняем очереди
+  for i := 1 to QueueCount do
+    begin
+      //Создаём очередь
+      Objects[i].Head := nil;
+      Objects[i].Tail := nil;
+      Objects[i].Count := 0;
+
+      //Добавляе элементы
+      for j := 1 to ObjCount[i] do
+        begin
+          //Создаём элемент
+          New(x);
+          x^.Next := nil;
+          x^.Input := 0;
+          New(x^.Time);
+          New(x^.Time^.Next);
+          t := x^.Time^.Next;
+
+          //Добавляем операции
+          for k := 1 to OperationCount do
+            begin
+              if Values[i,j,k] <> 0 then
+                begin
+                  TimeNeed := TimeNeed + Values[i,j,k];
+                  t^.Value := Values[i,j,k];
+                  t1 := t;
+                  New(t);
+                  t1^.Next := t
+                end;
+            end;
+          t1^.Next := nil;
+
+          AddToQueue(Objects[i], x);
+        end;
+    end;
+end;
+
+end.
+
